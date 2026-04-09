@@ -2,7 +2,7 @@
 
 Implements the Koch & Motz formula "2BN" (eq. 2BN from Rev. Mod. Phys. 31,
 1959, pp. 920-955) used in NASA TN D-4755 eq. 1 for the doubly-differential
-thin-target cross section d²sigma / (dk dOmega).
+thin-target cross section d^2 sigma / (dk dOmega).
 """
 
 from __future__ import annotations
@@ -10,7 +10,10 @@ from __future__ import annotations
 import logging
 import math
 
+import numpy as np
+
 import config
+from server.physics._validation import require_positive_energy, require_positive_z
 
 log = logging.getLogger(__name__)
 
@@ -21,14 +24,14 @@ def bethe_heitler_2bn(
     emission_angle_rad: float,
     z: int | float,
 ) -> float:
-    """Koch & Motz eq. 2BN: d²sigma / (dk dOmega) in cm² / (MeV·sr·atom).
+    """Koch & Motz eq. 2BN: d^2 sigma / (dk dOmega) in cm^2 / (MeV sr atom).
 
     This is the Bethe-Heitler cross section for bremsstrahlung emission
     from an electron of total energy E0 producing a photon of energy k
     at angle theta_0 from the electron direction, in the field of a
     nucleus with atomic number Z.
 
-    Uses natural units where energies are in m0c² units internally.
+    Uses natural units where energies are in m0c^2 units internally.
 
     Args:
         electron_energy_mev: Electron kinetic energy in MeV.
@@ -37,21 +40,15 @@ def bethe_heitler_2bn(
         z: Atomic number of target nucleus.
 
     Returns:
-        Doubly-differential cross section in cm²/(MeV·sr·atom).
+        Doubly-differential cross section in cm^2/(MeV sr atom).
         Returns 0.0 if photon energy >= electron kinetic energy.
 
     Raises:
         ValueError: If inputs are non-positive.
     """
-    if electron_energy_mev <= 0:
-        msg = f"Electron energy must be positive, got {electron_energy_mev} MeV"
-        raise ValueError(msg)
-    if photon_energy_mev <= 0:
-        msg = f"Photon energy must be positive, got {photon_energy_mev} MeV"
-        raise ValueError(msg)
-    if z <= 0:
-        msg = f"Atomic number must be positive, got Z={z}"
-        raise ValueError(msg)
+    require_positive_energy(electron_energy_mev, "Electron energy")
+    require_positive_energy(photon_energy_mev, "Photon energy")
+    require_positive_z(z)
 
     # Photon energy must be less than electron kinetic energy
     if photon_energy_mev >= electron_energy_mev:
@@ -77,8 +74,7 @@ def bethe_heitler_2bn(
     # Angular parameter: u = (E0 * theta)^2 ~ (gamma * theta)^2
     u = (e0 * emission_angle_rad) ** 2
 
-    # Schiff formula (2BS from Koch & Motz) — numerically stable
-    # Angular distribution: (1/(1+u)^2) envelope with correction terms
+    # Schiff formula (2BS from Koch & Motz) -- numerically stable
     denom = (1.0 + u) ** 2
     if denom <= 0:
         return 0.0
@@ -101,6 +97,7 @@ def thin_target_spectrum(
     a: float,
     photon_energies_mev: list[float] | None = None,
     n_points: int = 100,
+    n_angles: int = config.DEFAULT_THIN_TARGET_N_ANGLES,
     include_electron_electron: bool = True,
 ) -> tuple[list[float], list[float]]:
     """Angle-integrated thin-target bremsstrahlung spectrum.
@@ -112,19 +109,18 @@ def thin_target_spectrum(
         z: Atomic number.
         a: Atomic weight in g/mol.
         photon_energies_mev: Specific photon energies to evaluate at.
-            If None, generates n_points energies from 0.01*T0 to 0.99*T0.
+            If None, generates n_points energies from k_min to k_max.
         n_points: Number of photon energy points if photon_energies_mev is None.
-        include_electron_electron: If True, replace Z² with Z(Z+1).
+        n_angles: Number of angle quadrature points for angular integration.
+        include_electron_electron: If True, replace Z^2 with Z(Z+1).
 
     Returns:
         Tuple of (photon_energies, cross_sections) where cross sections are
-        in cm²/(MeV·atom).
+        in cm^2/(MeV atom).
     """
-    import numpy as np
-
     if photon_energies_mev is None:
-        k_min = 0.01 * electron_energy_mev
-        k_max = 0.99 * electron_energy_mev
+        k_min = config.SPECTRUM_K_FRACTION_MIN * electron_energy_mev
+        k_max = config.SPECTRUM_K_FRACTION_MAX * electron_energy_mev
         photon_energies_mev = list(np.linspace(k_min, k_max, n_points))
 
     z_f = float(z)
@@ -132,8 +128,7 @@ def thin_target_spectrum(
 
     cross_sections: list[float] = []
 
-    # Integrate over angle using Gauss-Legendre quadrature
-    n_angles = 32
+    # Integrate over angle using uniform quadrature
     angles = np.linspace(0.001, math.pi, n_angles)
     d_theta = angles[1] - angles[0]
 

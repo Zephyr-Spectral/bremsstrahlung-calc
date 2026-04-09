@@ -11,8 +11,12 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
+from starlette.responses import HTMLResponse
 
 import config
+from server.api.materials import router as materials_router
+from server.api.spectrum import router as spectrum_router
+from server.api.validation import router as validation_router
 
 log = logging.getLogger(__name__)
 
@@ -25,12 +29,17 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(config.TEMPLATES_DIR))
 
+# API routers
+app.include_router(spectrum_router)
+app.include_router(materials_router)
+app.include_router(validation_router)
+
 
 # ---------------------------------------------------------------------------
 # Page routes
 # ---------------------------------------------------------------------------
 @app.get("/")
-async def index(request: Request) -> templates.TemplateResponse:  # type: ignore[name-defined]
+async def index(request: Request) -> HTMLResponse:
     """Serve the main SPA shell."""
     return templates.TemplateResponse("index.html", {"request": request})
 

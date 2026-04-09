@@ -101,6 +101,22 @@ DEFAULT_N_LEGENDRE: int = 10  # Legendre terms for scattering kernel
 MIN_ELECTRON_ENERGY_MEV: float = 0.1
 MAX_ELECTRON_ENERGY_MEV: float = 10.0
 
+# Integration cutoffs and spectrum fraction bounds
+CSDA_RANGE_EMIN_MEV: float = 0.01  # lower cutoff for CSDA range integration
+SPECTRUM_K_FRACTION_MIN: float = 0.01  # k_min = fraction * T0 (thin-target)
+SPECTRUM_K_FRACTION_MAX: float = 0.99  # k_max = fraction * T0 (thin-target)
+THICK_SPECTRUM_K_FRACTION_MIN: float = 0.05  # k_min = fraction * T0 (thick-target)
+THICK_SPECTRUM_K_FRACTION_MAX: float = 0.95  # k_max = fraction * T0 (thick-target)
+
+# Quadrature defaults for angular integration
+DEFAULT_THIN_TARGET_N_ANGLES: int = 32  # angle quadrature for thin-target integration
+DEFAULT_THICK_TARGET_N_XI: int = 8  # electron angle quadrature points
+DEFAULT_THICK_TARGET_N_AZIMUTH: int = 8  # azimuthal quadrature points
+
+# Scattering model parameters
+MOLIERE_PREFACTOR: float = 0.157  # Moliere chi² prefactor for condensed media
+MIN_COSINE_SLANT: float = 0.01  # floor for cos(phi_d) at near-grazing incidence
+
 # ---------------------------------------------------------------------------
 # Mean ionization potential parameterization (Bloch, eV)
 # I ≈ 9.76*Z + 58.8*Z^(-0.19) for Z >= 13, else tabulated

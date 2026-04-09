@@ -43,13 +43,11 @@ def scattering_probability(
     """
     if depth_fraction <= 0:
         # At surface, electrons travel in forward direction
-        # Approximate as narrow distribution
         return 1.0 / (2.0 * math.pi) if abs(angle_rad) < 0.01 else 0.0
 
     cos_xi = math.cos(angle_rad)
 
     # Scattering parameter: increases with depth and Z
-    # Moliere screening angle squared ~ Z^(2/3) / (p * beta)^2
     z_f = float(z)
     p_beta = config.electron_momentum_moc(electron_energy_mev) * config.electron_beta(
         electron_energy_mev
@@ -58,7 +56,7 @@ def scattering_probability(
         return 0.0
 
     # Characteristic scattering angle squared per unit depth
-    chi_sq = 0.157 * z_f * (z_f + 1.0) / (p_beta**2)
+    chi_sq = config.MOLIERE_PREFACTOR * z_f * (z_f + 1.0) / (p_beta**2)
 
     # Transport mean free path parameter
     g_l_t = chi_sq * depth_fraction
@@ -128,7 +126,7 @@ def average_scattering_probability(
 ) -> np.ndarray:
     """Compute scattering probability distribution over angles.
 
-    Returns array of P_s values at equally-spaced angles from 0 to pi.
+    Returns array of (angle_rad, P_s) pairs at equally-spaced angles from 0 to pi.
 
     Args:
         depth_fraction: Fractional depth in target (0 to 1).
@@ -138,7 +136,7 @@ def average_scattering_probability(
         n_legendre: Number of Legendre terms.
 
     Returns:
-        Array of (angle_rad, probability) pairs.
+        Array of shape (n_angles, 2) with columns [angle_rad, probability].
     """
     angles = np.linspace(0.0, math.pi, n_angles)
     probs = np.array(

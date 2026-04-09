@@ -11,6 +11,7 @@ import logging
 import math
 
 import config
+from server.physics._validation import require_positive_energy, require_positive_z
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ def collision_stopping_power(
     z: int | float,
     a: float,
 ) -> float:
-    """Bethe collision stopping power for electrons in MeV·cm²/g.
+    """Bethe collision stopping power for electrons in MeV cm^2/g.
 
     Uses the Bethe-Ashkin formula (eq. 8 in NASA TN D-4755, ref. 5)
     for energy loss due to ionizing collisions.
@@ -31,17 +32,13 @@ def collision_stopping_power(
         a: Atomic weight in g/mol.
 
     Returns:
-        Collision stopping power -dE/d(rho*x) in MeV·cm²/g.
+        Collision stopping power -dE/d(rho*x) in MeV cm^2/g.
 
     Raises:
         ValueError: If energy or Z is non-positive.
     """
-    if kinetic_energy_mev <= 0:
-        msg = f"Electron energy must be positive, got {kinetic_energy_mev} MeV"
-        raise ValueError(msg)
-    if z <= 0:
-        msg = f"Atomic number must be positive, got Z={z}"
-        raise ValueError(msg)
+    require_positive_energy(kinetic_energy_mev, "Electron energy")
+    require_positive_z(z)
 
     z_f = float(z)
 
@@ -55,7 +52,6 @@ def collision_stopping_power(
     i_mev = config.mean_ionization_potential_ev(z) * 1.0e-6
 
     # Bethe formula for electrons (Rohrlich & Carlson form)
-    # Differs from heavy particle formula in max energy transfer and density effect
     prefactor = (
         2.0
         * math.pi
@@ -67,7 +63,6 @@ def collision_stopping_power(
     )
 
     # Electron-specific logarithmic term
-    # Uses kinematic max energy transfer = T/2 for identical particles
     log_arg = tau**2 * (tau + 2.0) / (2.0 * (i_mev / config.ELECTRON_MASS_MEV) ** 2)
     if log_arg <= 0:
         return 0.0
@@ -86,10 +81,10 @@ def radiative_stopping_power(
     z: int | float,
     a: float,
 ) -> float:
-    """Radiative (bremsstrahlung) stopping power in MeV·cm²/g.
+    """Radiative (bremsstrahlung) stopping power in MeV cm^2/g.
 
     Approximate formula: S_rad ~ (alpha * Z * (T + m0c2) * sigma_0 * N_A) / A
-    where sigma_0 = (alpha * r_e)^2 ≈ 5.80e-28 cm^2 and alpha is fine structure.
+    where sigma_0 = (alpha * r_e)^2 and alpha is fine structure constant.
 
     Args:
         kinetic_energy_mev: Electron kinetic energy in MeV.
@@ -97,24 +92,18 @@ def radiative_stopping_power(
         a: Atomic weight in g/mol.
 
     Returns:
-        Radiative stopping power in MeV·cm²/g.
+        Radiative stopping power in MeV cm^2/g.
     """
-    if kinetic_energy_mev <= 0:
-        msg = f"Electron energy must be positive, got {kinetic_energy_mev} MeV"
-        raise ValueError(msg)
-    if z <= 0:
-        msg = f"Atomic number must be positive, got Z={z}"
-        raise ValueError(msg)
+    require_positive_energy(kinetic_energy_mev, "Electron energy")
+    require_positive_z(z)
 
     z_f = float(z)
     total_energy = config.electron_total_energy_mev(kinetic_energy_mev)
 
     # Born approximation radiation cross section
-    # sigma_0 = alpha * r_e^2 (in cm^2)
     sigma_0 = config.ALPHA_FINE * config.RE_SQUARED_CM2
 
     # Approximate radiation length formula
-    # B_rad(Z) ≈ 4 * [ln(2*E/m0c2) - 1/3] for high energy, simplified to ~6 for MeV range
     b_rad = 4.0 * (math.log(2.0 * total_energy / config.ELECTRON_MASS_MEV) - 1.0 / 3.0)
     b_rad = max(b_rad, 5.33)  # floor for low energies
 
@@ -126,7 +115,7 @@ def total_stopping_power(
     z: int | float,
     a: float,
 ) -> float:
-    """Total stopping power (collision + radiative) in MeV·cm²/g.
+    """Total stopping power (collision + radiative) in MeV cm^2/g.
 
     Args:
         kinetic_energy_mev: Electron kinetic energy in MeV.
@@ -134,11 +123,11 @@ def total_stopping_power(
         a: Atomic weight in g/mol.
 
     Returns:
-        Total stopping power in MeV·cm²/g.
+        Total stopping power in MeV cm^2/g.
     """
-    return collision_stopping_power(kinetic_energy_mev, z, a) + radiative_stopping_power(
-        kinetic_energy_mev, z, a
-    )
+    s_col = collision_stopping_power(kinetic_energy_mev, z, a)
+    s_rad = radiative_stopping_power(kinetic_energy_mev, z, a)
+    return s_col + s_rad
 
 
 def _density_effect_correction(beta_gamma: float, z: int | float) -> float:
@@ -153,7 +142,6 @@ def _density_effect_correction(beta_gamma: float, z: int | float) -> float:
     Returns:
         delta/2 correction term.
     """
-    # Simplified Sternheimer formula
     x = math.log10(beta_gamma)
     z_f = float(z)
 
