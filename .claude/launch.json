@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bremsstrahlung",
+      "runtimeExecutable": "/Users/danthorn/science_venv/bin/uvicorn",
+      "runtimeArgs": ["server.main:app", "--reload", "--port", "8001"],
+      "port": 8001
+    }
+  ]
+}
