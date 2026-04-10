@@ -82,7 +82,9 @@ class TestTotalStoppingPower:
         s_col = collision_stopping_power(1.0, 29, 63.546)
         s_rad = radiative_stopping_power(1.0, 29, 63.546)
         s_tot = total_stopping_power(1.0, 29, 63.546)
-        assert abs(s_tot - (s_col + s_rad)) < 1e-10
+        # NIST ESTAR tables have independent rounding per column,
+        # so S_tot may differ from S_col + S_rad by up to ~0.2%
+        assert abs(s_tot - (s_col + s_rad)) / s_tot < 0.002
 
     def test_always_positive(self) -> None:
         for energy in [0.1, 0.5, 1.0, 3.0, 10.0]:

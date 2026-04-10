@@ -12,6 +12,7 @@ PROJECT_ROOT: Path = Path(__file__).resolve().parent
 DATA_DIR: Path = PROJECT_ROOT / "data"
 NASA_DATA_PATH: Path = DATA_DIR / "nasa_tnd4755" / "tables.json"
 XCOM_DATA_PATH: Path = DATA_DIR / "xcom_elements.json"
+ESTAR_DATA_PATH: Path = DATA_DIR / "estar_elements.json"
 STATIC_DIR: Path = PROJECT_ROOT / "static"
 TEMPLATES_DIR: Path = PROJECT_ROOT / "templates"
 
