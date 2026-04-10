@@ -11,3 +11,4 @@ htmlcov/
 dist/
 build/
 .venv/
+data/validation_results.json

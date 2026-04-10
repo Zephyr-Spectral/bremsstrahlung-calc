@@ -25,9 +25,7 @@ import config
 log = logging.getLogger(__name__)
 
 # Precomputed constant: 4 pi r_0^2 N_A  [cm^2/mol]
-_FOUR_PI_RE2_NA: float = (
-    4.0 * math.pi * config.RE_SQUARED_CM2 * config.AVOGADRO
-)  # = 0.601 cm^2/mol
+_FOUR_PI_RE2_NA: float = 4.0 * math.pi * config.RE_SQUARED_CM2 * config.AVOGADRO  # = 0.601 cm^2/mol
 
 
 def scattering_probability(

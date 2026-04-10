@@ -150,13 +150,7 @@ def bethe_heitler_2bn(
 
     # Prefactor: Z^2 r0^2 / (8 pi * 137) * (1/k) * (p/p0)
     # Result in cm^2/(m0c2 * sr * atom). Divide by m0c2 for per MeV.
-    prefactor = (
-        z_f**2
-        * config.RE_SQUARED_CM2
-        / (8.0 * math.pi * 137.0)
-        * (1.0 / k)
-        * (p_f / p0)
-    )
+    prefactor = z_f**2 * config.RE_SQUARED_CM2 / (8.0 * math.pi * 137.0) * (1.0 / k) * (p_f / p0)
 
     # Convert from per m0c2 to per MeV: divide by m0c2
     return prefactor * bracket / m0c2
@@ -267,13 +261,3 @@ def thin_target_spectrum(
         cross_sections.append(integral * z_correction)
 
     return photon_energies_mev, cross_sections
-
-
-def _safe_log_ratio(energy: float, momentum: float) -> float:
-    """Compute ln((E+p)/(E-p)) safely, avoiding division by zero."""
-    if momentum <= 0 or energy <= momentum:
-        return 0.0
-    ratio = (energy + momentum) / (energy - momentum)
-    if ratio <= 0:
-        return 0.0
-    return math.log(ratio)

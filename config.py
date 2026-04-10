@@ -163,7 +163,7 @@ def mean_ionization_potential_ev(z: int | float) -> float:
         raise ValueError(msg)
     if z_int in MEAN_IONIZATION_POTENTIALS_EV:
         return float(MEAN_IONIZATION_POTENTIALS_EV[z_int])
-    return 9.76 * z_int + 58.8 * z_int ** (-0.19)
+    return float(9.76 * z_int + 58.8 * z_int ** (-0.19))
 
 
 # ---------------------------------------------------------------------------
@@ -177,7 +177,7 @@ def thomas_fermi_radius_cm(z: int | float) -> float:
     if z <= 0:
         msg = f"Atomic number must be positive, got Z={z}"
         raise ValueError(msg)
-    return BOHR_RADIUS_CM * float(z) ** (-1.0 / 3.0)
+    return float(BOHR_RADIUS_CM * float(z) ** (-1.0 / 3.0))
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +198,7 @@ def backscatter_fraction(z: int | float, electron_energy_mev: float) -> float:
         msg = f"Electron energy must be positive, got {electron_energy_mev} MeV"
         raise ValueError(msg)
     z_f = float(z)
-    return min(0.005 * z_f**0.7 / (1.0 + 0.3 * electron_energy_mev), 0.5)
+    return float(min(0.005 * z_f**0.7 / (1.0 + 0.3 * electron_energy_mev), 0.5))
 
 
 # ---------------------------------------------------------------------------

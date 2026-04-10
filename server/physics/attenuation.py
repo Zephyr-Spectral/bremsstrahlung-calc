@@ -152,10 +152,11 @@ def photon_transmission(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_buildup_table() -> dict[str, Any] | None:
     """Return the buildup_coefficients sub-table from NASA data, or None."""
     data = get_nasa_data()
-    return data.get("buildup_coefficients") if data else None  # type: ignore[return-value]
+    return data.get("buildup_coefficients") if data else None
 
 
 def _interpolate_xcom(
@@ -204,7 +205,7 @@ def _interpolate_xcom(
         return m0
 
     log_e = math.log(energy_query / e0) / math.log(e1 / e0)
-    return m0 * (m1 / m0) ** log_e
+    return float(m0 * (m1 / m0) ** log_e)
 
 
 def _parametric_attenuation(photon_energy_mev: float, z: int | float) -> float:

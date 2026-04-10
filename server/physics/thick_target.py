@@ -68,8 +68,8 @@ def thick_target_intensity(
         density_g_cm3: Material density (g/cm³).  Used only for photon attenuation.
         material_symbol: Material symbol for NASA attenuation data lookup.
         n_slabs: Number of electron-energy integration steps.
-        n_xi: Unused (reserved for future Molière correction).
-        n_azimuth: Unused (reserved for future Molière correction).
+        n_xi: Number of electron scattering angle quadrature points.
+        n_azimuth: Number of azimuthal quadrature points.
 
     Returns:
         Intensity I(k, phi_d) in MeV/(MeV sr electron).
@@ -101,15 +101,11 @@ def thick_target_intensity(
     delta_e = t_max / n_slabs  # ΔE = E0/n (eq. 10)
     na_over_a = config.AVOGADRO / a  # N_A/A  [atoms/g]
 
-    # Scattering quadrature: beta angle points for epsilon, delta for psi
-    # (eq. 14 notation: alpha=0..beta, gamma=0..delta)
-    n_eps = n_xi  # number of epsilon (scattering angle) points
-    n_psi = n_azimuth  # number of psi (azimuthal) points
-
-    eps_angles = np.linspace(0.0, math.pi, n_eps + 1)[1:]  # skip eps=0 (delta fn)
-    d_eps = math.pi / n_eps
-    psi_angles = np.linspace(0.0, 2.0 * math.pi, n_psi, endpoint=False)
-    d_psi = 2.0 * math.pi / n_psi
+    # Scattering quadrature (eq. 14 notation: alpha=0..beta, gamma=0..delta)
+    eps_angles = np.linspace(0.0, math.pi, n_xi + 1)[1:]  # skip eps=0 (delta fn)
+    d_eps = math.pi / n_xi
+    psi_angles = np.linspace(0.0, 2.0 * math.pi, n_azimuth, endpoint=False)
+    d_psi = 2.0 * math.pi / n_azimuth
 
     intensity_sum = 0.0
     cumulative_depth = 0.0  # g/cm^2

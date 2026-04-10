@@ -129,31 +129,3 @@ def total_stopping_power(
     s_col = collision_stopping_power(kinetic_energy_mev, z, a)
     s_rad = radiative_stopping_power(kinetic_energy_mev, z, a)
     return s_col + s_rad
-
-
-def _density_effect_correction(beta_gamma: float, z: int | float) -> float:
-    """Sternheimer density effect correction delta/2.
-
-    Simplified parameterization for solids.
-
-    Args:
-        beta_gamma: Relativistic momentum beta * gamma.
-        z: Atomic number (used to estimate plasma frequency).
-
-    Returns:
-        delta/2 correction term.
-    """
-    x = math.log10(beta_gamma)
-    z_f = float(z)
-
-    # Approximate parameters for condensed media
-    x0 = 0.2 if z_f < 13 else 0.0
-    x1 = 3.0
-    c_bar = 2.0 * math.log(config.mean_ionization_potential_ev(z) / 28.816) + 1.0
-    a_param = (c_bar - 4.606 * x0) / (x1 - x0) ** 3
-
-    if x >= x1:
-        return c_bar + 4.606 * x
-    if x >= x0:
-        return c_bar + 4.606 * x + a_param * (x1 - x) ** 3
-    return 0.0

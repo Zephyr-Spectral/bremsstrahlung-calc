@@ -11,18 +11,19 @@ from __future__ import annotations
 import json
 import logging
 import math
+from typing import Any
 
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d  # type: ignore[import-untyped]  # scipy lacks py.typed
 
 import config
 
 log = logging.getLogger(__name__)
 
 # Module-level cache
-_nasa_intensity_data: dict[str, object] | None = None
+_nasa_intensity_data: dict[str, Any] | None = None
 
 
-def _load_intensity_data() -> dict[str, object]:
+def _load_intensity_data() -> dict[str, Any]:
     """Load and cache NASA intensity data."""
     global _nasa_intensity_data
     if _nasa_intensity_data is not None:
@@ -170,7 +171,7 @@ def clear_cache() -> None:
 
 
 def _build_corners(
-    mat_data: dict[str, object],
+    mat_data: dict[str, Any],
     energies: set[float],
     angles: set[float],
 ) -> dict[tuple[float, float], tuple[list[float], list[float]]]:
@@ -187,7 +188,8 @@ def _build_corners(
                     (k, v) for k, v in zip(k_data, i_data, strict=False) if v is not None and v > 0
                 ]
                 if valid:
-                    corners[(e, a)] = tuple(zip(*valid, strict=False))  # type: ignore[arg-type]
+                    k_list, v_list = zip(*valid, strict=False)
+                    corners[(e, a)] = (list(k_list), list(v_list))
     return corners
 
 

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 
+import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 
 import config
+from server.api import resolve_material
 from server.physics.interpolation import (
     get_nasa_spectrum_at_grid_point,
     interpolate_nasa_spectrum,
@@ -14,6 +16,7 @@ from server.physics.interpolation import (
 from server.physics.thick_target import (
     angle_integrated_spectrum,
     intensity_to_photon_rate,
+    thick_target_intensity,
     thick_target_spectrum,
 )
 
@@ -36,7 +39,7 @@ async def calculate_spectrum(
     n_points: int = Query(ge=10, le=500, default=50, description="Number of photon energy points"),
 ) -> dict[str, object]:
     """Compute bremsstrahlung energy spectrum at a fixed detection angle."""
-    mat = _resolve_material(material)
+    mat = resolve_material(material)
     z = int(mat["Z"])
     a_val = float(mat["A"])
     density = float(mat["density"])
@@ -97,14 +100,10 @@ async def angular_distribution(
     n_angles: int = Query(ge=5, le=91, default=19),
 ) -> dict[str, object]:
     """Compute intensity vs detection angle at fixed photon energy."""
-    mat = _resolve_material(material)
+    mat = resolve_material(material)
     z = int(mat["Z"])
     a_val = float(mat["A"])
     density = float(mat["density"])
-
-    import numpy as np
-
-    from server.physics.thick_target import thick_target_intensity
 
     angles = list(np.linspace(0.0, 90.0, n_angles))
     intensities = [
@@ -139,7 +138,7 @@ async def integrated_spectrum(
     n_points: int = Query(ge=10, le=200, default=30),
 ) -> dict[str, object]:
     """Compute angle-integrated bremsstrahlung spectrum."""
-    mat = _resolve_material(material)
+    mat = resolve_material(material)
     z = int(mat["Z"])
     a_val = float(mat["A"])
     density = float(mat["density"])
@@ -176,7 +175,7 @@ async def compare_materials(
 
     results: dict[str, dict[str, list[float]]] = {}
     for symbol in mat_list:
-        mat = _resolve_material(symbol)
+        mat = resolve_material(symbol)
         z = int(mat["Z"])
         a_val = float(mat["A"])
         density = float(mat["density"])
@@ -211,11 +210,7 @@ async def heatmap_spectrum(
     n_angles: int = Query(ge=3, le=19, default=9, description="Angle grid points"),
 ) -> dict[str, object]:
     """2-D intensity grid: photon energy vs detection angle."""
-    import numpy as np
-
-    from server.physics.thick_target import thick_target_intensity
-
-    mat = _resolve_material(material)
+    mat = resolve_material(material)
     z = int(mat["Z"])
     a_val = float(mat["A"])
     density = float(mat["density"])
@@ -279,13 +274,3 @@ async def nasa_grid_data(
         "photon_energy_mev": k,
         "intensity": intensity,
     }
-
-
-def _resolve_material(symbol: str) -> config.MaterialProperties:
-    """Look up material properties, raising 404 if not found."""
-    if symbol in config.ALL_MATERIALS:
-        return config.ALL_MATERIALS[symbol]
-    raise HTTPException(
-        status_code=404,
-        detail=f"Unknown material '{symbol}'. Available: {list(config.ALL_MATERIALS.keys())}",
-    )
