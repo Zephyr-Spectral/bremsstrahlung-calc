@@ -23,4 +23,13 @@ geant4_validation/thick_target_brems
 geant4_validation/build/
 geant4_validation/*.log
 geant4_validation/*.csv
+geant4_validation/*.bin
+geant4_validation/*.png
+geant4_validation/fe_*_log.txt
+geant4_validation/fe_*_summary.txt
+geant4_validation/batch_data/
+geant4_validation/batch_summaries.json
+geant4_validation/geant4_lookup.npz
+geant4_validation/killsphere_general
+geant4_validation/killsphere_general.cc
 data/mc_cache/

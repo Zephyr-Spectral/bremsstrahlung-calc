@@ -187,7 +187,8 @@ def thick_target_spectrum(
     Returns:
         Tuple of (photon_energies_mev, intensities).
     """
-    k_min = config.THICK_SPECTRUM_K_FRACTION_MIN * electron_energy_mev
+    k_frac = config.THICK_SPECTRUM_K_FRACTION_MIN * electron_energy_mev
+    k_min = max(config.THICK_SPECTRUM_K_MIN_MEV, k_frac)
     k_max = config.THICK_SPECTRUM_K_FRACTION_MAX * electron_energy_mev
     # Use log-spacing: bremsstrahlung spans decades and needs even sampling on log scale
     photon_energies = list(np.logspace(np.log10(k_min), np.log10(k_max), n_points))

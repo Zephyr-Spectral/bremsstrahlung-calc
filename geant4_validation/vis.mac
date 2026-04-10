@@ -1,0 +1,36 @@
+# Geant4 visualization macro for geometry validation
+# Run: ./fe_3mev_rings_vis (built with G4 vis enabled)
+# Or use: /control/execute vis.mac in interactive mode
+
+/vis/open OGL 800x600
+/vis/viewer/set/autoRefresh false
+/vis/verbose errors
+
+# Draw geometry
+/vis/drawVolume
+
+# Set viewing angle
+/vis/viewer/set/viewpointThetaPhi 30 30 deg
+/vis/viewer/set/lightsVector -1 0 0
+
+# Style
+/vis/viewer/set/style wireframe
+/vis/geometry/set/visibility World 0 false
+/vis/geometry/set/colour Target 0 0.3 0.5 0.9 0.6
+/vis/geometry/set/forceSolid Target 0
+
+# Ring detectors - green wireframe
+/vis/geometry/set/colour Ring_0 0 0.2 0.9 0.2 0.3
+
+# Trajectory settings
+/vis/scene/add/trajectories smooth
+/vis/modeling/trajectories/create/drawByParticleID
+/vis/modeling/trajectories/drawByParticleID-0/set e- red
+/vis/modeling/trajectories/drawByParticleID-0/set gamma green
+/vis/scene/endOfEventAction accumulate 10
+
+/vis/viewer/set/autoRefresh true
+/vis/viewer/flush
+
+# Run a few events to see tracks
+/run/beamOn 10

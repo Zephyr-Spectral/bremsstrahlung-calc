@@ -142,7 +142,8 @@ MAX_ELECTRON_ENERGY_MEV: float = 10.0
 CSDA_RANGE_EMIN_MEV: float = 0.01  # lower cutoff for CSDA range integration
 SPECTRUM_K_FRACTION_MIN: float = 0.01  # k_min = fraction * T0 (thin-target)
 SPECTRUM_K_FRACTION_MAX: float = 0.99  # k_max = fraction * T0 (thin-target)
-THICK_SPECTRUM_K_FRACTION_MIN: float = 0.05  # k_min = fraction * T0 (thick-target)
+THICK_SPECTRUM_K_FRACTION_MIN: float = 0.01  # k_min = fraction * T0 (thick-target)
+THICK_SPECTRUM_K_MIN_MEV: float = 0.010  # absolute floor: 10 keV
 THICK_SPECTRUM_K_FRACTION_MAX: float = 0.95  # k_max = fraction * T0 (thick-target)
 
 # Quadrature defaults for angular integration
