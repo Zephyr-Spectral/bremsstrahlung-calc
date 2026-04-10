@@ -252,11 +252,7 @@ def _bethe_collision_stopping_power(
     if log_arg <= 0:
         return 0.0
 
-    f_tau = (
-        1.0
-        - beta2
-        + (tau**2 / 8.0 - (2.0 * tau + 1.0) * math.log(2.0)) / (tau + 1.0) ** 2
-    )
+    f_tau = 1.0 - beta2 + (tau**2 / 8.0 - (2.0 * tau + 1.0) * math.log(2.0)) / (tau + 1.0) ** 2
 
     return prefactor * (math.log(log_arg) + f_tau)
 
@@ -274,9 +270,7 @@ def _bethe_radiative_stopping_power(
     total_energy = config.electron_total_energy_mev(kinetic_energy_mev)
     sigma_0 = config.ALPHA_FINE * config.RE_SQUARED_CM2
 
-    b_rad = 4.0 * (
-        math.log(2.0 * total_energy / config.ELECTRON_MASS_MEV) - 1.0 / 3.0
-    )
+    b_rad = 4.0 * (math.log(2.0 * total_energy / config.ELECTRON_MASS_MEV) - 1.0 / 3.0)
     b_rad = max(b_rad, 5.33)
 
     return config.AVOGADRO * z_f * (z_f + 1.0) * sigma_0 * total_energy * b_rad / a

@@ -23,7 +23,8 @@ import logging
 import math
 
 import numpy as np
-from scipy.special import legendre  # type: ignore[import-untyped]
+import numpy.typing as npt
+from scipy.special import eval_legendre, legendre  # type: ignore[import-untyped]
 
 import config
 
@@ -195,11 +196,60 @@ def average_scattering_probability(
     Returns:
         Array of shape (n_angles, 2) with columns [angle_rad, probability].
     """
-    angles = np.linspace(0.0, math.pi, n_angles)
-    probs = np.array(
-        [
-            scattering_probability(ang, depth_g_cm2, z, electron_energy_mev, a, n_legendre)
-            for ang in angles
-        ]
-    )
+    angles: npt.NDArray[np.float64] = np.linspace(0.0, math.pi, n_angles, dtype=np.float64)
+    probs = scattering_probability_vec(angles, depth_g_cm2, z, electron_energy_mev, a, n_legendre)
     return np.column_stack([angles, probs])
+
+
+def scattering_probability_vec(
+    angles_rad: npt.NDArray[np.float64],
+    depth_g_cm2: float,
+    z: int | float,
+    electron_energy_mev: float,
+    a: float = 1.0,
+    n_legendre: int = config.DEFAULT_N_LEGENDRE,
+) -> npt.NDArray[np.float64]:
+    """Vectorized Berger scattering probability for an array of angles.
+
+    Same physics as scattering_probability() but operates on a numpy array
+    using scipy.special.eval_legendre for vectorized Legendre evaluation —
+    n_legendre array operations instead of n_angles x n_legendre scalar calls.
+
+    Args:
+        angles_rad: Array of electron scattering angles in radians.
+        depth_g_cm2: Physical depth traversed in g/cm^2.
+        z: Atomic number.
+        electron_energy_mev: Electron kinetic energy at this depth.
+        a: Atomic weight in g/mol.
+        n_legendre: Number of Legendre terms.
+
+    Returns:
+        Probability density P_epsilon (per steradian), same shape as angles_rad.
+    """
+    if depth_g_cm2 <= 0:
+        result = np.zeros_like(angles_rad, dtype=np.float64)
+        result[angles_rad < 0.001] = 1.0 / (2.0 * math.pi * 0.001)
+        return result
+
+    z_f = float(z)
+    p_moc = config.electron_momentum_moc(electron_energy_mev)
+    beta = config.electron_beta(electron_energy_mev)
+    p_beta = p_moc * beta
+    if p_beta <= 0:
+        return np.zeros_like(angles_rad, dtype=np.float64)
+
+    omega_0 = _FOUR_PI_RE2_NA * z_f * (z_f + 1.0) / (a * p_beta**2)
+    l_coul = _coulomb_logarithm(z_f, p_beta)
+    g_base = omega_0 * l_coul * depth_g_cm2 / 2.0
+
+    cos_eps = np.cos(angles_rad)
+    result = np.zeros_like(cos_eps, dtype=np.float64)
+    for l_idx in range(n_legendre):
+        exponent = l_idx * (l_idx + 1) * g_base
+        if exponent > 30.0:
+            break
+        coeff = (2 * l_idx + 1) / (4.0 * math.pi)
+        # eval_legendre is vectorized over cos_eps array (n_xi calls -> 1 call)
+        result += coeff * math.exp(-exponent) * eval_legendre(l_idx, cos_eps)
+
+    return np.maximum(result, 0.0)

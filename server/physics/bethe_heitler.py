@@ -19,6 +19,7 @@ import logging
 import math
 
 import numpy as np
+import numpy.typing as npt
 
 import config
 from server.physics._validation import require_positive_energy, require_positive_z
@@ -261,3 +262,150 @@ def thin_target_spectrum(
         cross_sections.append(integral * z_correction)
 
     return photon_energies_mev, cross_sections
+
+
+# ---------------------------------------------------------------------------
+# Vectorized variants (avoid Python-level loops for array of angles)
+# ---------------------------------------------------------------------------
+
+
+def _bethe_heitler_2bs_vec(
+    electron_energy_mev: float,
+    photon_energy_mev: float,
+    emission_angles_rad: npt.NDArray[np.float64],
+    z: int | float,
+) -> npt.NDArray[np.float64]:
+    """Vectorized 2BS fallback for an array of emission angles."""
+    m0c2 = config.ELECTRON_MASS_MEV
+    z_f = float(z)
+    e0 = config.electron_total_energy_mev(electron_energy_mev) / m0c2
+    k_nat = photon_energy_mev / m0c2
+    e_final = e0 - k_nat
+    if e_final <= 1.0:
+        return np.zeros_like(emission_angles_rad)
+    x = k_nat / e0
+    one_minus_x = 1.0 - x
+    u = (e0 * emission_angles_rad) ** 2
+    u_plus_1 = u + 1.0
+    term_a = 16.0 * u * one_minus_x / u_plus_1**4
+    term_b = -((2.0 - x) ** 2) / u_plus_1**2
+    term_c = (1.0 + one_minus_x**2) / u_plus_1**2 - 4.0 * u * one_minus_x / u_plus_1**4
+    inv_m_energy = x / (2.0 * max(one_minus_x, 1e-30))
+    inv_m_screen = z_f ** (1.0 / 3.0) / (111.0 * u_plus_1)
+    inv_m_sq = inv_m_energy**2 + inv_m_screen**2
+    ln_m = -np.log(np.maximum(inv_m_sq, 1e-30))
+    bracket = np.maximum(term_a + term_b + term_c * ln_m, 0.0)
+    prefactor = (
+        2.0
+        * z_f**2
+        * config.RE_SQUARED_CM2
+        * config.ALPHA_FINE
+        / math.pi
+        * e0**2
+        / photon_energy_mev
+    )
+    return prefactor * bracket  # type: ignore[no-any-return]  # numpy product returns ndarray
+
+
+def bethe_heitler_2bn_vec(
+    electron_energy_mev: float,
+    photon_energy_mev: float,
+    emission_angles_rad: npt.NDArray[np.float64],
+    z: int | float,
+) -> npt.NDArray[np.float64]:
+    """Vectorized Koch & Motz 2BN for an array of emission angles.
+
+    Equivalent to calling bethe_heitler_2bn() for each angle but uses
+    numpy broadcasting, eliminating the Python-level loop.  The 2BS
+    fallback (for negative brackets) is also fully vectorized.
+
+    Args:
+        electron_energy_mev: Electron kinetic energy in MeV.
+        photon_energy_mev: Photon energy k in MeV.
+        emission_angles_rad: Array of emission angles in radians (any shape).
+        z: Atomic number.
+
+    Returns:
+        d^2 sigma / (dk dOmega) in cm^2/(MeV sr atom), same shape as input.
+    """
+    require_positive_energy(electron_energy_mev, "Electron energy")
+    require_positive_energy(photon_energy_mev, "Photon energy")
+    require_positive_z(z)
+
+    if photon_energy_mev >= electron_energy_mev:
+        return np.zeros_like(emission_angles_rad)
+
+    m0c2 = config.ELECTRON_MASS_MEV
+    z_f = float(z)
+    e0 = config.electron_total_energy_mev(electron_energy_mev) / m0c2
+    p0 = config.electron_momentum_moc(electron_energy_mev)
+    k = photon_energy_mev / m0c2
+    e_f = e0 - k
+    if e_f <= 1.0:
+        return np.zeros_like(emission_angles_rad)
+    p_f = math.sqrt(e_f**2 - 1.0)
+
+    # Scalar invariants (angle-independent)
+    ee0_m1 = e_f * e0 - 1.0
+    pp0 = p_f * p0
+    l_num, l_den = ee0_m1 + pp0, ee0_m1 - pp0
+    ep_num, ep_den = e_f + p_f, e_f - p_f
+    if l_den <= 0 or l_num <= 0 or ep_den <= 0:
+        return _bethe_heitler_2bs_vec(
+            electron_energy_mev, photon_energy_mev, emission_angles_rad, z
+        )
+    big_l = math.log(l_num / l_den)
+    eps_val = math.log(ep_num / ep_den)
+
+    # Array operations: all theta-dependent quantities
+    cos_theta = np.cos(emission_angles_rad)
+    sin2_theta = np.sin(emission_angles_rad) ** 2
+    delta_0 = e0 - p0 * cos_theta
+    q_sq = p0**2 + k**2 - 2.0 * p0 * k * cos_theta
+    valid = (delta_0 > 0) & (q_sq > 0)
+
+    # Safe denominators to avoid division by zero in invalid regions
+    d0 = np.where(valid, delta_0, 1.0)
+    qs = np.where(valid, q_sq, 1.0)
+    qv = np.sqrt(qs)
+
+    # eps_Q = log((Q + p_f) / (Q - p_f)) where it exists
+    qp_den = qv - p_f
+    valid_q = valid & (qp_den > 0)
+    qp_ratio = np.where(valid_q, (qv + p_f) / np.where(qp_den > 0, qp_den, 1.0), 1.0)
+    eps_q = np.where(valid_q, np.log(np.maximum(qp_ratio, 1e-30)), 0.0)
+
+    p0_sq = p0**2
+
+    # 2BN bracket terms (Powell eq. 1)
+    t1 = 8.0 * sin2_theta * (2.0 * e0**2 + 1.0) / (p0_sq * d0**4)
+    t2 = -2.0 * (5.0 * e0**2 + 2.0 * e_f * e0 + 3.0) / (p0_sq * d0**2)
+    t3 = -2.0 * (p0_sq - k**2) / (qs * d0**2)
+    t4 = 4.0 * e_f / (p0_sq * d0)
+    l_pp0 = big_l / (p_f * p0)
+    sub5 = (
+        4.0 * e0 * sin2_theta * (3.0 * k - p0_sq * e_f) / (p0_sq * d0**4)
+        + 4.0 * e0**2 * (e0**2 + e_f**2) / (p0_sq * d0**2)
+        + (2.0 - 2.0 * (7.0 * e0**2 - 3.0 * e_f * e0 + e_f**2)) / (p0_sq * d0**2)
+        + 2.0 * k * (e0**2 + e_f * e0 - 1.0) / (p0_sq * d0)
+    )
+    t5 = l_pp0 * sub5
+    t6 = -4.0 * eps_val / (p_f * d0)
+    eq_pq = np.where(valid_q, eps_q / (p_f * qv), 0.0)
+    t7 = eq_pq * (4.0 / d0**2 - 6.0 * k / d0 - 2.0 * k * (p0_sq - k**2) / (qs * d0))
+    bracket = t1 + t2 + t3 + t4 + t5 + t6 + t7
+
+    prefactor = (
+        z_f**2 * config.RE_SQUARED_CM2 / (8.0 * math.pi * 137.0) * (1.0 / k) * (p_f / p0) / m0c2
+    )
+    result = prefactor * bracket
+
+    # Fallback to vectorized 2BS where 2BN gives negative or invalid
+    neg_mask = ~valid | (bracket <= 0)
+    if np.any(neg_mask):
+        bh_2bs = _bethe_heitler_2bs_vec(
+            electron_energy_mev, photon_energy_mev, emission_angles_rad, z
+        )
+        result = np.where(neg_mask, bh_2bs, result)
+
+    return result  # type: ignore[no-any-return]  # numpy where/product returns ndarray

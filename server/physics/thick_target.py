@@ -30,12 +30,11 @@ import numpy as np
 
 import config
 from server.physics.attenuation import photon_transmission
-from server.physics.bethe_heitler import bethe_heitler_2bn
+from server.physics.bremslib import bremslib_ddcs_vec
 from server.physics.electron_range import csda_range
 from server.physics.scattering import (
     backscatter_fraction,
-    scattering_broadened_angle,
-    scattering_probability,
+    scattering_probability_vec,
 )
 from server.physics.stopping_power import total_stopping_power
 
@@ -115,6 +114,18 @@ def thick_target_intensity(
     psi_angles = np.linspace(0.0, 2.0 * math.pi, n_azimuth, endpoint=False)
     d_psi = 2.0 * math.pi / n_azimuth
 
+    # theta_0 matrix — independent of slab energy, compute once outside loop
+    # Shape (n_xi, n_azimuth): photon emission angle for each (eps, psi) pair
+    phi_d_rad = math.radians(detection_angle_deg)
+    cos_phi_d = math.cos(phi_d_rad)
+    sin_phi_d = math.sin(phi_d_rad)
+    cos_theta0_mat = (
+        np.cos(eps_angles)[:, np.newaxis] * cos_phi_d
+        + np.sin(eps_angles)[:, np.newaxis] * sin_phi_d * np.cos(psi_angles)[np.newaxis, :]
+    )
+    theta_0_mat = np.arccos(np.clip(cos_theta0_mat, -1.0, 1.0))  # (n_xi, n_azimuth)
+    sin_eps = np.sin(eps_angles)  # (n_xi,)
+
     intensity_sum = 0.0
     cumulative_depth = 0.0  # g/cm^2
 
@@ -144,20 +155,17 @@ def thick_target_intensity(
             material_symbol,
         )
 
-        # --- Scattering convolution (eq. 14 inner double sum) ---
-        # Sum over electron scattering angles (epsilon) and azimuthal (psi).
-        # theta_0 = angle between scattered electron and photon direction
-        # computed from spherical triangle (eq. 3).
-        scatter_sum = 0.0
-
-        for j, eps in enumerate(eps_angles):
-            p_eps = scattering_probability(eps, depth_mid, z, t_i, a)
-            d_eps_j = eps_widths[j]
-
-            for psi in psi_angles:
-                theta_0 = scattering_broadened_angle(detection_angle_deg, eps, psi)
-                bh = bethe_heitler_2bn(t_i, photon_energy_mev, theta_0, z)
-                scatter_sum += bh * p_eps * math.sin(eps) * d_eps_j * d_psi
+        # --- Vectorized scattering convolution (eq. 14 inner double sum) ---
+        # BremsLib partial-wave DDCS replaces Born 2BN + S-B correction.
+        # Includes Coulomb corrections, exact screening, finite-nucleus effects.
+        z_int = round(z_f)
+        ddcs_mat = bremslib_ddcs_vec(t_i, photon_energy_mev, theta_0_mat, z_int)
+        # Scattering probability: shape (n_xi,)
+        p_eps_arr = scattering_probability_vec(eps_angles, depth_mid, z, t_i, a)
+        # Integration weights: p_eps * sin(eps) * d_eps  shape (n_xi,)
+        weights = p_eps_arr * sin_eps * eps_widths
+        # Sum over psi (axis=1), weighted sum over eps, multiply by d_psi
+        scatter_sum = float(np.dot(weights, ddcs_mat.sum(axis=1))) * d_psi
 
         # Eq. 14: contribution from slab i
         intensity_sum += (

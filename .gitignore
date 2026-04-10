@@ -12,3 +12,8 @@ dist/
 build/
 .venv/
 data/validation_results.json
+
+# BremsLib raw data (1.4 GB, 86K files) — only the .npz table is committed
+data/bremslib/BremsLib_v2.0/
+data/bremslib/build/
+data/bremslib/Interpolate_DCS/
