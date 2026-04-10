@@ -120,9 +120,7 @@ def run_full_sweep(
                     mat_ratios.append(result["mean_ratio"])
                     total_points += int(result.get("n_points", 0))
 
-                    flagged = (
-                        result.get("max_ratio", 0) > 3.0 or result.get("min_ratio", 1) < 0.33
-                    )
+                    flagged = result.get("max_ratio", 0) > 3.0 or result.get("min_ratio", 1) < 0.33
                     if flagged:
                         total_flags += 1
                         entry["FLAGGED"] = True

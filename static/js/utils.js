@@ -68,13 +68,10 @@ const Utils = (function () {
         return isLight() ? _LIGHT_POLAR_BG : _DARK_POLAR_BG;
     }
 
-    // Keep DARK_LAYOUT as a convenience alias (used by plots.js via spread)
-    const DARK_LAYOUT = _DARK;
-
     const PLOT_COLORS = [
         '#e94560', '#00d2ff', '#ffd700', '#00ff88',
         '#ff6b6b', '#9b59b6', '#f39c12', '#1abc9c',
     ];
 
-    return { fetchJSON, debounce, formatEnergy, formatSci, DARK_LAYOUT, getLayout, getPolarBg, PLOT_COLORS };
+    return { fetchJSON, debounce, formatEnergy, formatSci, getLayout, getPolarBg, PLOT_COLORS };
 })();

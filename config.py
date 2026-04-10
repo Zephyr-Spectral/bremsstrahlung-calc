@@ -35,7 +35,6 @@ PLANCK_CONSTANT_MEV_S: float = 4.135667696e-21  # MeV·s
 BARN_CM2: float = 1.0e-24  # cm²
 
 # Derived
-ELECTRON_REST_ENERGY_MEV: float = ELECTRON_MASS_MEV  # alias for clarity
 RE_SQUARED_CM2: float = CLASSICAL_ELECTRON_RADIUS_CM**2  # r₀² in cm²
 ALPHA_FINE: float = FINE_STRUCTURE_CONSTANT  # shorthand
 
@@ -108,8 +107,6 @@ NASA_DETECTION_ANGLES_DEG: list[float] = [0.0, 30.0, 60.0]
 # ---------------------------------------------------------------------------
 DEFAULT_N_SLABS: int = 100  # thin slabs for thick-target integration
 DEFAULT_PHOTON_ENERGY_POINTS: int = 200  # points in photon energy spectrum
-DEFAULT_ANGLE_POINTS: int = 91  # 0° to 90° inclusive
-MAX_PLOT_POINTS: int = 500  # max points sent to frontend
 DEFAULT_N_LEGENDRE: int = 20  # Legendre terms for scattering kernel
 
 # Energy range limits (MeV)
@@ -129,7 +126,6 @@ DEFAULT_THICK_TARGET_N_XI: int = 16  # electron angle quadrature points
 DEFAULT_THICK_TARGET_N_AZIMUTH: int = 12  # azimuthal quadrature points
 
 # Scattering model parameters
-MOLIERE_PREFACTOR: float = 0.157  # Moliere chi² prefactor for condensed media
 MIN_COSINE_SLANT: float = 0.01  # floor for cos(phi_d) at near-grazing incidence
 
 # ---------------------------------------------------------------------------
@@ -164,20 +160,6 @@ def mean_ionization_potential_ev(z: int | float) -> float:
     if z_int in MEAN_IONIZATION_POTENTIALS_EV:
         return float(MEAN_IONIZATION_POTENTIALS_EV[z_int])
     return float(9.76 * z_int + 58.8 * z_int ** (-0.19))
-
-
-# ---------------------------------------------------------------------------
-# Thomas-Fermi screening radius (used in Bethe-Heitler)
-# ---------------------------------------------------------------------------
-BOHR_RADIUS_CM: float = 5.29177e-9  # cm
-
-
-def thomas_fermi_radius_cm(z: int | float) -> float:
-    """Return Thomas-Fermi atomic radius a = a₀ * Z^(-1/3) in cm."""
-    if z <= 0:
-        msg = f"Atomic number must be positive, got Z={z}"
-        raise ValueError(msg)
-    return float(BOHR_RADIUS_CM * float(z) ** (-1.0 / 3.0))
 
 
 # ---------------------------------------------------------------------------

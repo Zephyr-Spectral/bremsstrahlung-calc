@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 import config
+from server.api import resolve_material
 from server.physics.electron_range import csda_range
 from server.physics.stopping_power import total_stopping_power
 
@@ -40,7 +41,7 @@ async def stopping_power_curve(
     n_points: int = Query(ge=5, le=200, default=50),
 ) -> dict[str, object]:
     """Compute stopping power vs electron energy for a material."""
-    mat = _resolve_material(symbol)
+    mat = resolve_material(symbol)
     z = int(mat["Z"])
     a_val = float(mat["A"])
 
@@ -66,7 +67,7 @@ async def range_curve(
     n_points: int = Query(ge=5, le=50, default=20),
 ) -> dict[str, object]:
     """Compute electron CSDA range vs energy for a material."""
-    mat = _resolve_material(symbol)
+    mat = resolve_material(symbol)
     z = int(mat["Z"])
     a_val = float(mat["A"])
 
@@ -84,13 +85,3 @@ async def range_curve(
         "electron_energy_mev": energies,
         "range_g_cm2": ranges,
     }
-
-
-def _resolve_material(symbol: str) -> config.MaterialProperties:
-    """Look up material properties, raising 404 if not found."""
-    if symbol in config.ALL_MATERIALS:
-        return config.ALL_MATERIALS[symbol]
-    raise HTTPException(
-        status_code=404,
-        detail=f"Unknown material '{symbol}'. Available: {list(config.ALL_MATERIALS.keys())}",
-    )
