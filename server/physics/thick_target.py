@@ -102,8 +102,16 @@ def thick_target_intensity(
     na_over_a = config.AVOGADRO / a  # N_A/A  [atoms/g]
 
     # Scattering quadrature (eq. 14 notation: alpha=0..beta, gamma=0..delta)
-    eps_angles = np.linspace(0.0, math.pi, n_xi + 1)[1:]  # skip eps=0 (delta fn)
-    d_eps = math.pi / n_xi
+    # Use LOG-spaced epsilon grid: concentrates points near eps=0 where both
+    # the scattering PDF and BH cross section peak.  At high energies
+    # (gamma>>1) the forward cone has width ~1/gamma, which a uniform grid
+    # under-resolves.  Log spacing gives ~4 points per decade from 0.001 to pi.
+    eps_min = 0.001  # avoid eps=0 singularity
+    eps_angles = np.logspace(np.log10(eps_min), np.log10(math.pi), n_xi)
+    # Trapezoidal weights for log-spaced grid
+    eps_widths = np.diff(eps_angles)
+    eps_widths = np.append(eps_widths, eps_widths[-1])  # extend last bin
+
     psi_angles = np.linspace(0.0, 2.0 * math.pi, n_azimuth, endpoint=False)
     d_psi = 2.0 * math.pi / n_azimuth
 
@@ -142,20 +150,14 @@ def thick_target_intensity(
         # computed from spherical triangle (eq. 3).
         scatter_sum = 0.0
 
-        for eps in eps_angles:
+        for j, eps in enumerate(eps_angles):
             p_eps = scattering_probability(eps, depth_mid, z, t_i, a)
+            d_eps_j = eps_widths[j]
 
             for psi in psi_angles:
                 theta_0 = scattering_broadened_angle(detection_angle_deg, eps, psi)
                 bh = bethe_heitler_2bn(t_i, photon_energy_mev, theta_0, z)
-                scatter_sum += bh * p_eps * math.sin(eps) * d_eps * d_psi
-
-        # Also add the epsilon=0 contribution (forward electrons)
-        # At eps=0: theta_0 = phi_d, P_eps is the forward peak
-        p_eps_0 = scattering_probability(0.001, depth_mid, z, t_i, a)
-        theta_0_fwd = scattering_broadened_angle(detection_angle_deg, 0.001, 0.0)
-        bh_fwd = bethe_heitler_2bn(t_i, photon_energy_mev, theta_0_fwd, z)
-        scatter_sum += bh_fwd * p_eps_0 * math.sin(0.001) * d_eps * 2.0 * math.pi
+                scatter_sum += bh * p_eps * math.sin(eps) * d_eps_j * d_psi
 
         # Eq. 14: contribution from slab i
         intensity_sum += (

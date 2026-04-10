@@ -123,8 +123,8 @@ THICK_SPECTRUM_K_FRACTION_MAX: float = 0.95  # k_max = fraction * T0 (thick-targ
 
 # Quadrature defaults for angular integration
 DEFAULT_THIN_TARGET_N_ANGLES: int = 32  # angle quadrature for thin-target integration
-DEFAULT_THICK_TARGET_N_XI: int = 16  # electron angle quadrature points
-DEFAULT_THICK_TARGET_N_AZIMUTH: int = 12  # azimuthal quadrature points
+DEFAULT_THICK_TARGET_N_XI: int = 180  # electron angle points (~1 deg resolution)
+DEFAULT_THICK_TARGET_N_AZIMUTH: int = 36  # azimuthal points (10 deg resolution)
 
 # Scattering model parameters
 MIN_COSINE_SLANT: float = 0.01  # floor for cos(phi_d) at near-grazing incidence
