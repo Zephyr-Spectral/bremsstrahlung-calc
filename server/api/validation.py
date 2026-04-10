@@ -26,7 +26,7 @@ async def nasa_comparison(
         raise HTTPException(status_code=404, detail=f"Material '{material}' not in NASA data")
 
     mat = config.NASA_MATERIALS[material]
-    z = mat["Z"]
+    z = int(mat["Z"])
     a_val = float(mat["A"])
     density = float(mat["density"])
 

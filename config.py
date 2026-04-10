@@ -11,6 +11,7 @@ from pathlib import Path
 PROJECT_ROOT: Path = Path(__file__).resolve().parent
 DATA_DIR: Path = PROJECT_ROOT / "data"
 NASA_DATA_PATH: Path = DATA_DIR / "nasa_tnd4755" / "tables.json"
+XCOM_DATA_PATH: Path = DATA_DIR / "xcom_elements.json"
 STATIC_DIR: Path = PROJECT_ROOT / "static"
 TEMPLATES_DIR: Path = PROJECT_ROOT / "templates"
 
@@ -82,6 +83,20 @@ EXTENDED_MATERIALS: dict[str, MaterialProperties] = {
 # Combined lookup
 ALL_MATERIALS: dict[str, MaterialProperties] = {**NASA_MATERIALS, **EXTENDED_MATERIALS}
 
+# XCOM element name lookup: material symbol -> name as stored in xcom_elements.json
+XCOM_ELEMENT_NAMES: dict[str, str] = {
+    "Mg": "Magnesium",
+    "Al": "Aluminum",
+    "Ti": "Titanium",
+    "Mn": "Manganese",
+    "Fe": "Iron",
+    "Ni": "Nickel",
+    "Cu": "Copper",
+    "W": "Tungsten",
+    "Au": "Gold",
+    "Pb": "Lead",
+}
+
 # ---------------------------------------------------------------------------
 # NASA TN D-4755 grid parameters
 # ---------------------------------------------------------------------------
@@ -95,7 +110,7 @@ DEFAULT_N_SLABS: int = 100  # thin slabs for thick-target integration
 DEFAULT_PHOTON_ENERGY_POINTS: int = 200  # points in photon energy spectrum
 DEFAULT_ANGLE_POINTS: int = 91  # 0° to 90° inclusive
 MAX_PLOT_POINTS: int = 500  # max points sent to frontend
-DEFAULT_N_LEGENDRE: int = 10  # Legendre terms for scattering kernel
+DEFAULT_N_LEGENDRE: int = 20  # Legendre terms for scattering kernel
 
 # Energy range limits (MeV)
 MIN_ELECTRON_ENERGY_MEV: float = 0.1
@@ -110,8 +125,8 @@ THICK_SPECTRUM_K_FRACTION_MAX: float = 0.95  # k_max = fraction * T0 (thick-targ
 
 # Quadrature defaults for angular integration
 DEFAULT_THIN_TARGET_N_ANGLES: int = 32  # angle quadrature for thin-target integration
-DEFAULT_THICK_TARGET_N_XI: int = 8  # electron angle quadrature points
-DEFAULT_THICK_TARGET_N_AZIMUTH: int = 8  # azimuthal quadrature points
+DEFAULT_THICK_TARGET_N_XI: int = 16  # electron angle quadrature points
+DEFAULT_THICK_TARGET_N_AZIMUTH: int = 12  # azimuthal quadrature points
 
 # Scattering model parameters
 MOLIERE_PREFACTOR: float = 0.157  # Moliere chi² prefactor for condensed media
@@ -147,7 +162,7 @@ def mean_ionization_potential_ev(z: int | float) -> float:
         msg = f"Atomic number must be positive, got Z={z}"
         raise ValueError(msg)
     if z_int in MEAN_IONIZATION_POTENTIALS_EV:
-        return MEAN_IONIZATION_POTENTIALS_EV[z_int]
+        return float(MEAN_IONIZATION_POTENTIALS_EV[z_int])
     return 9.76 * z_int + 58.8 * z_int ** (-0.19)
 
 

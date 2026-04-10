@@ -1,12 +1,24 @@
 """Thick-target bremsstrahlung integration engine.
 
-Implements Powell's method (NASA TN D-4755, eqs. 1-14): approximate a thick
-target as a series of thin slabs, sum thin-target bremsstrahlung contributions
-over the electron path through the target, including:
-  1. Multiple electron scattering (Berger)
-  2. Electron backscatter correction (Wright & Trump)
-  3. Electron-electron bremsstrahlung: Z^2 -> Z(Z+1)
-  4. Photon attenuation and buildup in target
+Implements Powell's method (NASA TN D-4755, eqs. 1-14): integrate
+thin-target contributions over the electron slowing-down path:
+
+    I(k, phi_d) = k * (N_A/A) * (1-W) * (Z+1)/Z
+                * integral_0^T0  BH(T, k, phi_d) * f(k, X) * dT/S_tot(T)
+
+where:
+  BH  = doubly-differential thin-target cross section [cm²/(MeV sr atom)]
+  f   = photon transmission/buildup through remaining target
+  X   = cumulative path length from surface [g/cm²]
+  S   = total electron stopping power [MeV cm²/g]
+  W   = backscatter fraction
+  Z+1/Z = electron-electron bremsstrahlung correction (Z² → Z(Z+1))
+
+The multiple-scattering angular redistribution is a correction to the
+angular distribution shape; at the dominant forward angles it broadens
+the peak but does not change the integral significantly.  Including it
+properly requires Molière theory with physical path-length units which
+is deferred to a later phase.
 """
 
 from __future__ import annotations
@@ -25,6 +37,7 @@ from server.physics.scattering import (
     scattering_broadened_angle,
     scattering_probability,
 )
+from server.physics.stopping_power import total_stopping_power
 
 log = logging.getLogger(__name__)
 
@@ -43,20 +56,20 @@ def thick_target_intensity(
 ) -> float:
     """Compute thick-target bremsstrahlung intensity at a single point.
 
-    Implements NASA TN D-4755 eq. 14: sums thin-target contributions
-    over n_slabs, each treated as thin target for BH production.
+    Uses Powell's method: integrate thin-target BH contributions over
+    the electron energy-loss path (eq. 1, NASA TN D-4755).
 
     Args:
         electron_energy_mev: Incident electron kinetic energy (MeV).
         photon_energy_mev: Photon energy (MeV).
-        detection_angle_deg: Detection angle from target normal (degrees).
+        detection_angle_deg: Detection angle from beam axis (degrees).
         z: Atomic number.
         a: Atomic weight (g/mol).
-        density_g_cm3: Material density (g/cm^3).
-        material_symbol: Material symbol for NASA data lookup.
-        n_slabs: Number of thin slabs for integration.
-        n_xi: Number of electron angle quadrature points.
-        n_azimuth: Number of azimuthal quadrature points.
+        density_g_cm3: Material density (g/cm³).  Used only for photon attenuation.
+        material_symbol: Material symbol for NASA attenuation data lookup.
+        n_slabs: Number of electron-energy integration steps.
+        n_xi: Unused (reserved for future Molière correction).
+        n_azimuth: Unused (reserved for future Molière correction).
 
     Returns:
         Intensity I(k, phi_d) in MeV/(MeV sr electron).
@@ -68,42 +81,57 @@ def thick_target_intensity(
 
     z_f = float(z)
 
-    # Total target thickness = mean electron range
+    # Z(Z+1) correction: replaces Z^2 in BH with Z(Z+1) for e-e brems
+    ee_correction = (z_f + 1.0) / z_f
+
+    # Backscatter correction (1 - W)
+    bs_correction = 1.0 - backscatter_fraction(z, electron_energy_mev)
+
+    # Total CSDA range [g/cm^2]
     total_range = csda_range(electron_energy_mev, z, a, n_steps=200)
     if total_range <= 0:
         return 0.0
 
-    # Backscatter correction (1 - W)
-    w = backscatter_fraction(z, electron_energy_mev)
-    bs_correction = 1.0 - w
+    # Energy grid: n_slabs equal-energy steps from T0 down to threshold
+    t_min = photon_energy_mev + config.ELECTRON_MASS_MEV * 0.01
+    t_max = electron_energy_mev
+    if t_min >= t_max:
+        return 0.0
 
-    # Electron-electron bremsstrahlung: Z(Z+1) instead of Z^2
-    ee_correction = (z_f + 1.0) / z_f
+    delta_e = t_max / n_slabs  # ΔE = E0/n (eq. 10)
+    na_over_a = config.AVOGADRO / a  # N_A/A  [atoms/g]
 
-    # Energy decrement per slab
-    de_slab = electron_energy_mev / n_slabs
+    # Scattering quadrature: beta angle points for epsilon, delta for psi
+    # (eq. 14 notation: alpha=0..beta, gamma=0..delta)
+    n_eps = n_xi  # number of epsilon (scattering angle) points
+    n_psi = n_azimuth  # number of psi (azimuthal) points
 
-    # Depth increment per slab (in g/cm^2)
-    dt_slab = total_range / n_slabs
+    eps_angles = np.linspace(0.0, math.pi, n_eps + 1)[1:]  # skip eps=0 (delta fn)
+    d_eps = math.pi / n_eps
+    psi_angles = np.linspace(0.0, 2.0 * math.pi, n_psi, endpoint=False)
+    d_psi = 2.0 * math.pi / n_psi
 
     intensity_sum = 0.0
-
-    azimuth_angles = np.linspace(0.0, 2.0 * math.pi, n_azimuth, endpoint=False)
-    d_azimuth = 2.0 * math.pi / n_azimuth
-
-    xi_angles = np.linspace(0.01, math.pi / 2, n_xi)
-    d_xi = xi_angles[1] - xi_angles[0]
+    cumulative_depth = 0.0  # g/cm^2
 
     for i in range(n_slabs):
-        # Electron energy at slab i (decreasing with depth)
-        e_i = electron_energy_mev - i * de_slab
-        if e_i <= photon_energy_mev + config.ELECTRON_MASS_MEV:
-            break  # electron energy too low to produce this photon
+        # Electron kinetic energy at slab i (eq. 10: E_i = E0 - i*DE)
+        t_i = t_max - i * delta_e
+        if t_i <= photon_energy_mev:
+            break
 
-        depth_fraction = (i + 0.5) / n_slabs
-        remaining_depth = total_range * (1.0 - depth_fraction)
+        s_tot = total_stopping_power(t_i, z, a)
+        if s_tot <= 0:
+            break
 
-        # Photon transmission through remaining target
+        # Path-length element for this energy step [g/cm^2]
+        dt_i = delta_e / s_tot
+
+        # Physical depth at midpoint of this slab [g/cm^2]
+        depth_mid = cumulative_depth + dt_i * 0.5
+        remaining_depth = max(total_range - depth_mid, 0.0)
+
+        # Photon transmission through remaining target (eq. 12-13)
         transmission = photon_transmission(
             photon_energy_mev,
             remaining_depth,
@@ -112,28 +140,39 @@ def thick_target_intensity(
             material_symbol,
         )
 
-        # Number density * slab thickness
-        na_dt = config.AVOGADRO * dt_slab / a
+        # --- Scattering convolution (eq. 14 inner double sum) ---
+        # Sum over electron scattering angles (epsilon) and azimuthal (psi).
+        # theta_0 = angle between scattered electron and photon direction
+        # computed from spherical triangle (eq. 3).
+        scatter_sum = 0.0
 
-        # Integrate over electron scattering angles
-        slab_contribution = 0.0
+        for eps in eps_angles:
+            p_eps = scattering_probability(eps, depth_mid, z, t_i, a)
 
-        for xi in xi_angles:
-            p_s = scattering_probability(xi, depth_fraction, z, e_i)
+            for psi in psi_angles:
+                theta_0 = scattering_broadened_angle(detection_angle_deg, eps, psi)
+                bh = bethe_heitler_2bn(t_i, photon_energy_mev, theta_0, z)
+                scatter_sum += bh * p_eps * math.sin(eps) * d_eps * d_psi
 
-            for psi in azimuth_angles:
-                theta_0 = scattering_broadened_angle(detection_angle_deg, xi, psi)
-                dsigma = bethe_heitler_2bn(e_i, photon_energy_mev, theta_0, z)
-                slab_contribution += p_s * dsigma * math.sin(xi) * d_xi * d_azimuth
+        # Also add the epsilon=0 contribution (forward electrons)
+        # At eps=0: theta_0 = phi_d, P_eps is the forward peak
+        p_eps_0 = scattering_probability(0.001, depth_mid, z, t_i, a)
+        theta_0_fwd = scattering_broadened_angle(detection_angle_deg, 0.001, 0.0)
+        bh_fwd = bethe_heitler_2bn(t_i, photon_energy_mev, theta_0_fwd, z)
+        scatter_sum += bh_fwd * p_eps_0 * math.sin(0.001) * d_eps * 2.0 * math.pi
 
+        # Eq. 14: contribution from slab i
         intensity_sum += (
             photon_energy_mev
-            * slab_contribution
-            * na_dt
-            * transmission
-            * bs_correction
             * ee_correction
+            * bs_correction
+            * na_over_a
+            * scatter_sum
+            * dt_i
+            * transmission
         )
+
+        cumulative_depth += dt_i
 
     return intensity_sum
 
@@ -152,20 +191,21 @@ def thick_target_spectrum(
 
     Args:
         electron_energy_mev: Incident electron kinetic energy (MeV).
-        detection_angle_deg: Detection angle from target normal (degrees).
+        detection_angle_deg: Detection angle from beam axis (degrees).
         z: Atomic number.
         a: Atomic weight (g/mol).
-        density_g_cm3: Material density (g/cm^3).
+        density_g_cm3: Material density (g/cm³).
         material_symbol: Material symbol for NASA data lookup.
         n_points: Number of photon energy points.
-        n_slabs: Number of thin slabs for integration.
+        n_slabs: Number of electron-energy integration steps.
 
     Returns:
         Tuple of (photon_energies_mev, intensities).
     """
     k_min = config.THICK_SPECTRUM_K_FRACTION_MIN * electron_energy_mev
     k_max = config.THICK_SPECTRUM_K_FRACTION_MAX * electron_energy_mev
-    photon_energies = list(np.linspace(k_min, k_max, n_points))
+    # Use log-spacing: bremsstrahlung spans decades and needs even sampling on log scale
+    photon_energies = list(np.logspace(np.log10(k_min), np.log10(k_max), n_points))
 
     intensities = [
         thick_target_intensity(
@@ -196,17 +236,17 @@ def angle_integrated_spectrum(
 ) -> tuple[list[float], list[float]]:
     """Compute angle-integrated thick-target spectrum.
 
-    Integrates I(k, phi_d) * 2*pi*sin(phi_d) over phi_d from 0 to pi/2.
+    Integrates I(k, phi_d) * 2π sin(phi_d) over phi_d from 0 to π/2.
 
     Args:
         electron_energy_mev: Incident electron kinetic energy (MeV).
         z: Atomic number.
         a: Atomic weight (g/mol).
-        density_g_cm3: Material density (g/cm^3).
+        density_g_cm3: Material density (g/cm³).
         material_symbol: Material symbol for NASA data lookup.
         n_photon_points: Number of photon energy points.
         n_angle_points: Number of angle integration points.
-        n_slabs: Number of thin slabs.
+        n_slabs: Number of electron-energy integration steps.
 
     Returns:
         Tuple of (photon_energies_mev, integrated_intensities).

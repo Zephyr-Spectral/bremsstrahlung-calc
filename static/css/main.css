@@ -1,4 +1,6 @@
-/* Bremsstrahlung Calculator — Dark theme */
+/* Bremsstrahlung Calculator — themeable dark/light */
+
+/* ── Theme variables ─────────────────────────────────── */
 :root {
     --bg: #1a1a2e;
     --bg-surface: #16213e;
@@ -9,8 +11,22 @@
     --accent-secondary: #00d2ff;
     --border: #333;
     --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    color-scheme: dark;
 }
 
+:root[data-theme="light"] {
+    --bg: #f4f6fb;
+    --bg-surface: #ffffff;
+    --bg-panel: #e8edf5;
+    --text: #1a1a2e;
+    --text-muted: #555;
+    --accent: #c0303f;
+    --accent-secondary: #0077aa;
+    --border: #ccd0d9;
+    color-scheme: light;
+}
+
+/* ── Reset ───────────────────────────────────────────── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
@@ -23,6 +39,7 @@ body {
     overflow: hidden;
 }
 
+/* ── Header ──────────────────────────────────────────── */
 header {
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border);
@@ -41,15 +58,30 @@ header h1 {
 header .subtitle {
     font-size: 11px;
     color: var(--text-muted);
+    flex: 1;
 }
 
-/* Layout */
+#theme-toggle {
+    padding: 3px 10px;
+    background: var(--bg-panel);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    align-self: center;
+}
+#theme-toggle:hover { color: var(--text); border-color: var(--accent-secondary); }
+
+/* ── Layout ──────────────────────────────────────────── */
 .app-layout {
     display: flex;
     height: calc(100vh - 40px);
 }
 
-/* Sidebar */
+/* ── Sidebar ─────────────────────────────────────────── */
 .sidebar {
     width: 260px;
     min-width: 260px;
@@ -63,7 +95,7 @@ header .subtitle {
     margin-bottom: 12px;
 }
 
-.control-group label {
+.control-group > label {
     display: block;
     font-size: 11px;
     color: var(--text-muted);
@@ -152,7 +184,7 @@ select {
     min-height: 16px;
 }
 
-/* Main content */
+/* ── Main content ────────────────────────────────────── */
 .content {
     flex: 1;
     display: flex;
@@ -160,7 +192,7 @@ select {
     overflow: hidden;
 }
 
-/* Tabs */
+/* ── Tab bar ─────────────────────────────────────────── */
 .tab-bar {
     display: flex;
     background: var(--bg-surface);
@@ -187,7 +219,7 @@ select {
     border-bottom-color: var(--accent-secondary);
 }
 
-/* Tab panes */
+/* ── Tab panes ───────────────────────────────────────── */
 .tab-pane {
     display: none;
     flex: 1;
@@ -223,7 +255,7 @@ select {
     min-height: 0;
 }
 
-/* Compare checkboxes */
+/* ── Compare checkboxes ──────────────────────────────── */
 #compare-checks label {
     margin-right: 8px;
     font-size: 12px;

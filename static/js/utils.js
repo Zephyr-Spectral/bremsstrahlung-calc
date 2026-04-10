@@ -31,7 +31,7 @@ const Utils = (function () {
         return val.toExponential(3);
     }
 
-    const DARK_LAYOUT = {
+    const _DARK = {
         paper_bgcolor: '#1a1a2e',
         plot_bgcolor: '#16213e',
         font: { color: '#e0e0e0', family: 'SF Mono, Fira Code, Consolas, monospace', size: 11 },
@@ -41,10 +41,40 @@ const Utils = (function () {
         legend: { bgcolor: 'rgba(22,33,62,0.8)', bordercolor: '#333', borderwidth: 1 },
     };
 
+    const _LIGHT = {
+        paper_bgcolor: '#f4f6fb',
+        plot_bgcolor: '#ffffff',
+        font: { color: '#1a1a2e', family: 'SF Mono, Fira Code, Consolas, monospace', size: 11 },
+        xaxis: { gridcolor: '#ccd0d9', zerolinecolor: '#aaa' },
+        yaxis: { gridcolor: '#ccd0d9', zerolinecolor: '#aaa' },
+        margin: { l: 60, r: 20, t: 40, b: 50 },
+        legend: { bgcolor: 'rgba(255,255,255,0.9)', bordercolor: '#ccd0d9', borderwidth: 1 },
+    };
+
+    const _DARK_POLAR_BG = '#16213e';
+    const _LIGHT_POLAR_BG = '#f0f4fa';
+
+    function isLight() {
+        return document.documentElement.getAttribute('data-theme') === 'light';
+    }
+
+    /** Return the active Plotly layout base object. */
+    function getLayout() {
+        return isLight() ? _LIGHT : _DARK;
+    }
+
+    /** Return the active polar background colour. */
+    function getPolarBg() {
+        return isLight() ? _LIGHT_POLAR_BG : _DARK_POLAR_BG;
+    }
+
+    // Keep DARK_LAYOUT as a convenience alias (used by plots.js via spread)
+    const DARK_LAYOUT = _DARK;
+
     const PLOT_COLORS = [
         '#e94560', '#00d2ff', '#ffd700', '#00ff88',
         '#ff6b6b', '#9b59b6', '#f39c12', '#1abc9c',
     ];
 
-    return { fetchJSON, debounce, formatEnergy, formatSci, DARK_LAYOUT, PLOT_COLORS };
+    return { fetchJSON, debounce, formatEnergy, formatSci, DARK_LAYOUT, getLayout, getPolarBg, PLOT_COLORS };
 })();

@@ -4,10 +4,10 @@
 const Plots = (function () {
     'use strict';
 
-    const L = Utils.DARK_LAYOUT;
     const C = Utils.PLOT_COLORS;
 
     function spectrum(data) {
+        const L = Utils.getLayout();
         const traces = [];
         const params = data.parameters;
 
@@ -43,6 +43,7 @@ const Plots = (function () {
     }
 
     function angular(data) {
+        const L = Utils.getLayout();
         const trace = {
             theta: data.angles_deg,
             r: data.intensity,
@@ -53,13 +54,14 @@ const Plots = (function () {
             marker: { size: 4 },
         };
 
+        const gridColor = Utils.getPolarBg() === '#16213e' ? '#333' : '#ccd0d9';
         const layout = {
             ...L,
             title: `Angular Distribution: ${data.parameters.material}, E\u2090=${data.parameters.electron_energy_mev} MeV, k=${data.parameters.photon_energy_mev} MeV`,
             polar: {
-                bgcolor: '#16213e',
-                angularaxis: { gridcolor: '#333', linecolor: '#333', tickfont: { color: '#999' } },
-                radialaxis: { gridcolor: '#333', linecolor: '#333', tickfont: { color: '#999' }, type: 'log' },
+                bgcolor: Utils.getPolarBg(),
+                angularaxis: { gridcolor: gridColor, linecolor: gridColor, tickfont: { color: L.font.color } },
+                radialaxis: { gridcolor: gridColor, linecolor: gridColor, tickfont: { color: L.font.color }, type: 'log' },
             },
         };
 
@@ -67,6 +69,7 @@ const Plots = (function () {
     }
 
     function integrated(data) {
+        const L = Utils.getLayout();
         const trace = {
             x: data.photon_energy_mev,
             y: data.intensity,
@@ -88,6 +91,7 @@ const Plots = (function () {
     }
 
     function compare(data) {
+        const L = Utils.getLayout();
         const traces = [];
         const symbols = Object.keys(data.spectra);
         symbols.forEach((sym, i) => {
@@ -111,7 +115,33 @@ const Plots = (function () {
         Plotly.react('plot-compare', traces, layout, { responsive: true });
     }
 
+    function heatmap(data) {
+        const L = Utils.getLayout();
+        const trace = {
+            x: data.photon_energy_mev,
+            y: data.angles_deg,
+            z: data.intensity,
+            type: 'heatmap',
+            colorscale: 'Viridis',
+            colorbar: {
+                title: { text: 'Intensity', side: 'right' },
+                tickfont: { color: L.font.color },
+                titlefont: { color: L.font.color },
+            },
+        };
+
+        const layout = {
+            ...L,
+            title: `Intensity Heatmap: ${data.parameters.material}, E=${data.parameters.electron_energy_mev} MeV`,
+            xaxis: { ...L.xaxis, title: 'Photon Energy (MeV)', type: 'log' },
+            yaxis: { ...L.yaxis, title: 'Angle (deg)' },
+        };
+
+        Plotly.react('plot-heatmap', [trace], layout, { responsive: true });
+    }
+
     function validation(data) {
+        const L = Utils.getLayout();
         const traces = [];
 
         if (data.nasa) {
@@ -146,6 +176,7 @@ const Plots = (function () {
     }
 
     function materials(data) {
+        const L = Utils.getLayout();
         const traces = [{
             x: data.electron_energy_mev,
             y: data.stopping_power_mev_cm2_g || data.range_g_cm2,
@@ -169,5 +200,5 @@ const Plots = (function () {
         Plotly.react('plot-materials', traces, layout, { responsive: true });
     }
 
-    return { spectrum, angular, integrated, compare, validation, materials };
+    return { spectrum, angular, integrated, compare, heatmap, validation, materials };
 })();

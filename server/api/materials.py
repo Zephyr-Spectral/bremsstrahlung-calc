@@ -41,7 +41,7 @@ async def stopping_power_curve(
 ) -> dict[str, object]:
     """Compute stopping power vs electron energy for a material."""
     mat = _resolve_material(symbol)
-    z = mat["Z"]
+    z = int(mat["Z"])
     a_val = float(mat["A"])
 
     energies = list(
@@ -67,7 +67,7 @@ async def range_curve(
 ) -> dict[str, object]:
     """Compute electron CSDA range vs energy for a material."""
     mat = _resolve_material(symbol)
-    z = mat["Z"]
+    z = int(mat["Z"])
     a_val = float(mat["A"])
 
     energies = list(

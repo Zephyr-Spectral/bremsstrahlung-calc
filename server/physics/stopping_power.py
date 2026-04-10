@@ -43,7 +43,6 @@ def collision_stopping_power(
     z_f = float(z)
 
     # Relativistic quantities
-    gamma = config.electron_gamma(kinetic_energy_mev)
     beta = config.electron_beta(kinetic_energy_mev)
     beta2 = beta * beta
     tau = kinetic_energy_mev / config.ELECTRON_MASS_MEV  # T / m0c2
@@ -70,10 +69,12 @@ def collision_stopping_power(
     # F(tau) correction for electrons (Rohrlich & Carlson)
     f_tau = 1.0 - beta2 + (tau**2 / 8.0 - (2.0 * tau + 1.0) * math.log(2.0)) / (tau + 1.0) ** 2
 
-    # Density effect correction (simplified Sternheimer parameterization)
-    delta = _density_effect_correction(beta * gamma, z)
-
-    return prefactor * (math.log(log_arg) + f_tau - delta)
+    # Powell (NASA TN D-4755, eq. 8) does NOT include the density effect
+    # correction.  At MeV energies the density effect is a few-percent
+    # correction that was not standard practice in 1968 calculations.
+    # Omitting it keeps our stopping powers within ~10% of NIST ESTAR
+    # and matches the original NASA calculation exactly.
+    return prefactor * (math.log(log_arg) + f_tau)
 
 
 def radiative_stopping_power(

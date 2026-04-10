@@ -37,7 +37,7 @@ async def calculate_spectrum(
 ) -> dict[str, object]:
     """Compute bremsstrahlung energy spectrum at a fixed detection angle."""
     mat = _resolve_material(material)
-    z = mat["Z"]
+    z = int(mat["Z"])
     a_val = float(mat["A"])
     density = float(mat["density"])
 
@@ -98,7 +98,7 @@ async def angular_distribution(
 ) -> dict[str, object]:
     """Compute intensity vs detection angle at fixed photon energy."""
     mat = _resolve_material(material)
-    z = mat["Z"]
+    z = int(mat["Z"])
     a_val = float(mat["A"])
     density = float(mat["density"])
 
@@ -140,7 +140,7 @@ async def integrated_spectrum(
 ) -> dict[str, object]:
     """Compute angle-integrated bremsstrahlung spectrum."""
     mat = _resolve_material(material)
-    z = mat["Z"]
+    z = int(mat["Z"])
     a_val = float(mat["A"])
     density = float(mat["density"])
 
@@ -177,7 +177,7 @@ async def compare_materials(
     results: dict[str, dict[str, list[float]]] = {}
     for symbol in mat_list:
         mat = _resolve_material(symbol)
-        z = mat["Z"]
+        z = int(mat["Z"])
         a_val = float(mat["A"])
         density = float(mat["density"])
 
@@ -200,6 +200,54 @@ async def compare_materials(
             "angle_deg": angle_deg,
         },
         "spectra": results,
+    }
+
+
+@router.get("/heatmap")
+async def heatmap_spectrum(
+    material: str = Query(description="Material symbol"),
+    electron_energy_mev: float = Query(ge=0.1, le=10.0),
+    n_points: int = Query(ge=5, le=100, default=20, description="Photon energy points"),
+    n_angles: int = Query(ge=3, le=19, default=9, description="Angle grid points"),
+) -> dict[str, object]:
+    """2-D intensity grid: photon energy vs detection angle."""
+    import numpy as np
+
+    from server.physics.thick_target import thick_target_intensity
+
+    mat = _resolve_material(material)
+    z = int(mat["Z"])
+    a_val = float(mat["A"])
+    density = float(mat["density"])
+
+    angles = list(np.linspace(0.0, 90.0, n_angles))
+    k_min = electron_energy_mev * config.THICK_SPECTRUM_K_FRACTION_MIN
+    k_max = electron_energy_mev * config.THICK_SPECTRUM_K_FRACTION_MAX
+    photon_energies = list(np.logspace(np.log10(k_min), np.log10(k_max), n_points))
+    mat_sym: str | None = material if material in config.NASA_MATERIALS else None
+
+    intensity_grid: list[list[float]] = [
+        [
+            thick_target_intensity(
+                electron_energy_mev,
+                k,
+                angle,
+                z,
+                a_val,
+                density,
+                material_symbol=mat_sym,
+                n_slabs=30,
+            )
+            for k in photon_energies
+        ]
+        for angle in angles
+    ]
+
+    return {
+        "parameters": {"material": material, "electron_energy_mev": electron_energy_mev},
+        "photon_energy_mev": photon_energies,
+        "angles_deg": angles,
+        "intensity": intensity_grid,
     }
 
 
