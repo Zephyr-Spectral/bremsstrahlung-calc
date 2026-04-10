@@ -1,24 +1,21 @@
 """Thick-target bremsstrahlung integration engine.
 
-Implements Powell's method (NASA TN D-4755, eqs. 1-14): integrate
-thin-target contributions over the electron slowing-down path:
+Depth-based slab integration over the electron CSDA track:
 
     I(k, phi_d) = k * (N_A/A) * (1-W) * (Z+1)/Z
-                * integral_0^T0  BH(T, k, phi_d) * f(k, X) * dT/S_tot(T)
+                * integral_0^R_CSDA  DDCS(T(m), k, phi_d) * f(k, R-m) * dm
 
-where:
-  BH  = doubly-differential thin-target cross section [cm²/(MeV sr atom)]
-  f   = photon transmission/buildup through remaining target
-  X   = cumulative path length from surface [g/cm²]
-  S   = total electron stopping power [MeV cm²/g]
-  W   = backscatter fraction
-  Z+1/Z = electron-electron bremsstrahlung correction (Z² → Z(Z+1))
+where m is the mass thickness (penetration depth in g/cm^2), T(m) is the
+electron energy at depth m from the pre-computed ESTAR energy-depth profile,
+R_CSDA is the total CSDA range, and:
 
-The multiple-scattering angular redistribution is a correction to the
-angular distribution shape; at the dominant forward angles it broadens
-the peak but does not change the integral significantly.  Including it
-properly requires Molière theory with physical path-length units which
-is deferred to a later phase.
+  DDCS = BremsLib v2.0 partial-wave doubly-differential cross section
+  f    = photon transmission/buildup through remaining target (R - m)
+  W    = backscatter fraction (Wright & Trump fit)
+  Z+1/Z = electron-electron bremsstrahlung correction
+
+The scattering convolution broadens the angular distribution at each depth
+using Berger's Legendre expansion with the true cumulative depth m.
 """
 
 from __future__ import annotations
@@ -36,7 +33,7 @@ from server.physics.scattering import (
     backscatter_fraction,
     scattering_probability_vec,
 )
-from server.physics.stopping_power import total_stopping_power
+from server.physics.stopping_power import energy_at_depth
 
 log = logging.getLogger(__name__)
 
@@ -91,31 +88,26 @@ def thick_target_intensity(
     if total_range <= 0:
         return 0.0
 
-    # Energy grid: n_slabs equal-energy steps from T0 down to threshold
-    t_min = photon_energy_mev + config.ELECTRON_MASS_MEV * 0.01
-    t_max = electron_energy_mev
-    if t_min >= t_max:
-        return 0.0
-
-    delta_e = t_max / n_slabs  # ΔE = E0/n (eq. 10)
     na_over_a = config.AVOGADRO / a  # N_A/A  [atoms/g]
+    z_int = round(z_f)
 
-    # Scattering quadrature (eq. 14 notation: alpha=0..beta, gamma=0..delta)
-    # Use LOG-spaced epsilon grid: concentrates points near eps=0 where both
-    # the scattering PDF and BH cross section peak.  At high energies
-    # (gamma>>1) the forward cone has width ~1/gamma, which a uniform grid
-    # under-resolves.  Log spacing gives ~4 points per decade from 0.001 to pi.
+    # --- Depth grid: uniform mass-thickness slabs ---
+    # Pre-compute T(m) from ESTAR stopping power (cached per element/energy)
+    delta_m = total_range / n_slabs  # uniform slab thickness [g/cm^2]
+    m_mids = np.asarray((np.arange(n_slabs) + 0.5) * delta_m, dtype=np.float64)
+    t_mids = energy_at_depth(m_mids, electron_energy_mev, z, a)  # vectorized
+
+    # --- Scattering quadrature (log-spaced epsilon grid) ---
     eps_min = 0.001  # avoid eps=0 singularity
     eps_angles = np.logspace(np.log10(eps_min), np.log10(math.pi), n_xi)
-    # Trapezoidal weights for log-spaced grid
     eps_widths = np.diff(eps_angles)
     eps_widths = np.append(eps_widths, eps_widths[-1])  # extend last bin
 
     psi_angles = np.linspace(0.0, 2.0 * math.pi, n_azimuth, endpoint=False)
     d_psi = 2.0 * math.pi / n_azimuth
 
-    # theta_0 matrix — independent of slab energy, compute once outside loop
-    # Shape (n_xi, n_azimuth): photon emission angle for each (eps, psi) pair
+    # theta_0 matrix: photon emission angle for each (eps, psi) pair
+    # Independent of slab energy — compute once outside loop
     phi_d_rad = math.radians(detection_angle_deg)
     cos_phi_d = math.cos(phi_d_rad)
     sin_phi_d = math.sin(phi_d_rad)
@@ -123,30 +115,21 @@ def thick_target_intensity(
         np.cos(eps_angles)[:, np.newaxis] * cos_phi_d
         + np.sin(eps_angles)[:, np.newaxis] * sin_phi_d * np.cos(psi_angles)[np.newaxis, :]
     )
-    theta_0_mat = np.arccos(np.clip(cos_theta0_mat, -1.0, 1.0))  # (n_xi, n_azimuth)
-    sin_eps = np.sin(eps_angles)  # (n_xi,)
+    theta_0_mat = np.arccos(np.clip(cos_theta0_mat, -1.0, 1.0))
+    sin_eps = np.sin(eps_angles)
 
+    # --- Slab loop: integrate over depth ---
     intensity_sum = 0.0
-    cumulative_depth = 0.0  # g/cm^2
 
-    for i in range(n_slabs):
-        # Electron kinetic energy at slab i (eq. 10: E_i = E0 - i*DE)
-        t_i = t_max - i * delta_e
-        if t_i <= photon_energy_mev:
+    for j in range(n_slabs):
+        t_j = float(t_mids[j])
+        if t_j <= photon_energy_mev:
             break
 
-        s_tot = total_stopping_power(t_i, z, a)
-        if s_tot <= 0:
-            break
+        m_j = float(m_mids[j])
+        remaining_depth = max(total_range - m_j, 0.0)
 
-        # Path-length element for this energy step [g/cm^2]
-        dt_i = delta_e / s_tot
-
-        # Physical depth at midpoint of this slab [g/cm^2]
-        depth_mid = cumulative_depth + dt_i * 0.5
-        remaining_depth = max(total_range - depth_mid, 0.0)
-
-        # Photon transmission through remaining target (eq. 12-13)
+        # Photon transmission through remaining target
         transmission = photon_transmission(
             photon_energy_mev,
             remaining_depth,
@@ -155,30 +138,26 @@ def thick_target_intensity(
             material_symbol,
         )
 
-        # --- Vectorized scattering convolution (eq. 14 inner double sum) ---
-        # BremsLib partial-wave DDCS replaces Born 2BN + S-B correction.
-        # Includes Coulomb corrections, exact screening, finite-nucleus effects.
-        z_int = round(z_f)
-        ddcs_mat = bremslib_ddcs_vec(t_i, photon_energy_mev, theta_0_mat, z_int)
-        # Scattering probability: shape (n_xi,)
-        p_eps_arr = scattering_probability_vec(eps_angles, depth_mid, z, t_i, a)
-        # Integration weights: p_eps * sin(eps) * d_eps  shape (n_xi,)
+        # BremsLib partial-wave DDCS at electron energy T(m_j)
+        ddcs_mat = bremslib_ddcs_vec(t_j, photon_energy_mev, theta_0_mat, z_int)
+
+        # Scattering probability at true cumulative depth m_j
+        p_eps_arr = scattering_probability_vec(eps_angles, m_j, z, t_j, a)
+
+        # Weighted angular integration
         weights = p_eps_arr * sin_eps * eps_widths
-        # Sum over psi (axis=1), weighted sum over eps, multiply by d_psi
         scatter_sum = float(np.dot(weights, ddcs_mat.sum(axis=1))) * d_psi
 
-        # Eq. 14: contribution from slab i
+        # Accumulate: I += k * corrections * DDCS_convolved * dm * transmission
         intensity_sum += (
             photon_energy_mev
             * ee_correction
             * bs_correction
             * na_over_a
             * scatter_sum
-            * dt_i
+            * delta_m
             * transmission
         )
-
-        cumulative_depth += dt_i
 
     return intensity_sum
 

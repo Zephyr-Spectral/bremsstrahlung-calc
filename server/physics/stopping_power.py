@@ -21,6 +21,7 @@ import math
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 from scipy.interpolate import interp1d  # type: ignore[import-untyped]
 
 import config
@@ -193,6 +194,104 @@ def total_stopping_power(
     s_col = _bethe_collision_stopping_power(kinetic_energy_mev, z, a)
     s_rad = _bethe_radiative_stopping_power(kinetic_energy_mev, z, a)
     return s_col + s_rad
+
+
+# ---------------------------------------------------------------------------
+# Energy-depth profile T(m): pre-computed electron energy vs penetration depth
+# ---------------------------------------------------------------------------
+
+_FloatArray = npt.NDArray[np.float64]
+_edp_cache: dict[tuple[float, int, float], tuple[_FloatArray, _FloatArray]] = {}
+_eat_cache: dict[tuple[float, int, float], interp1d] = {}
+
+
+def energy_depth_profile(
+    t0_mev: float,
+    z: int | float,
+    a: float,
+    n_steps: int = config.ENERGY_DEPTH_N_INTEGRATION,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Pre-compute electron energy T(m) as a function of penetration depth m.
+
+    Integrates the ESTAR total stopping power to build the CSDA energy-depth
+    relationship.  The result is cached per (T0, Z, A).
+
+    Args:
+        t0_mev: Initial electron kinetic energy in MeV.
+        z: Atomic number.
+        a: Atomic weight in g/mol.
+        n_steps: Number of integration steps (default from config).
+
+    Returns:
+        Tuple of (depths_g_cm2, energies_mev) with:
+        - depths increasing from 0 to R_CSDA
+        - energies decreasing from T0 to ~e_min
+    """
+    require_positive_energy(t0_mev, "Electron energy")
+    require_positive_z(z)
+    z_int = round(z)
+    cache_key = (round(t0_mev, 5), z_int, round(a, 5))
+    if cache_key in _edp_cache:
+        return _edp_cache[cache_key]
+
+    # Energy grid: T0 down to a small cutoff (avoid zero)
+    e_min = max(0.001, t0_mev * 1e-4)  # 0.1% of T0 or 1 keV
+    energies = np.linspace(t0_mev, e_min, n_steps + 1)  # decreasing
+    de = np.abs(np.diff(energies))  # positive step sizes
+
+    # Midpoint energies for trapezoidal-like integration
+    e_mid = 0.5 * (energies[:-1] + energies[1:])
+
+    # Stopping power at each midpoint
+    inv_s = np.array([1.0 / max(total_stopping_power(float(e), z, a), 1e-10) for e in e_mid])
+
+    # dm = dE / S(E) at each step
+    dm = de * inv_s  # g/cm^2 per step
+
+    # Cumulative depth (starting from 0 at surface = T0)
+    depths = np.asarray(np.concatenate([[0.0], np.cumsum(dm)]), dtype=np.float64)
+    energy_arr = np.asarray(energies, dtype=np.float64)
+
+    _edp_cache[cache_key] = (depths, energy_arr)
+    return depths, energy_arr
+
+
+def energy_at_depth(
+    depth_g_cm2: npt.NDArray[np.float64],
+    t0_mev: float,
+    z: int | float,
+    a: float,
+) -> npt.NDArray[np.float64]:
+    """Look up electron energy T at given penetration depth(s) m.
+
+    Uses the cached energy-depth profile with linear interpolation.
+    Returns ~0 for depths beyond the CSDA range.
+
+    Args:
+        depth_g_cm2: Penetration depths in g/cm^2 (numpy array).
+        t0_mev: Initial electron kinetic energy in MeV.
+        z: Atomic number.
+        a: Atomic weight in g/mol.
+
+    Returns:
+        Electron kinetic energies in MeV at the given depths.
+    """
+    z_int = round(z)
+    cache_key = (round(t0_mev, 5), z_int, round(a, 5))
+
+    if cache_key not in _eat_cache:
+        depths, energies = energy_depth_profile(t0_mev, z, a)
+        _eat_cache[cache_key] = interp1d(
+            depths,
+            energies,
+            kind="linear",
+            bounds_error=False,
+            fill_value=(float(energies[0]), float(energies[-1])),
+        )
+
+    fn = _eat_cache[cache_key]
+    result = fn(depth_g_cm2)
+    return np.maximum(result, 0.0)  # type: ignore[no-any-return]  # interp1d returns ndarray
 
 
 def estar_csda_range(

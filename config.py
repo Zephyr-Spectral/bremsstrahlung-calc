@@ -107,9 +107,10 @@ NASA_DETECTION_ANGLES_DEG: list[float] = [0.0, 30.0, 60.0]
 # ---------------------------------------------------------------------------
 # Calculation defaults
 # ---------------------------------------------------------------------------
-DEFAULT_N_SLABS: int = 100  # thin slabs for thick-target integration
+DEFAULT_N_SLABS: int = 100  # depth slabs for thick-target integration
 DEFAULT_PHOTON_ENERGY_POINTS: int = 200  # points in photon energy spectrum
 DEFAULT_N_LEGENDRE: int = 20  # Legendre terms for scattering kernel
+ENERGY_DEPTH_N_INTEGRATION: int = 500  # steps for T(m) energy-depth profile
 
 # Energy range limits (MeV)
 MIN_ELECTRON_ENERGY_MEV: float = 0.1
@@ -165,16 +166,27 @@ def mean_ionization_potential_ev(z: int | float) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Electron backscatter ratios from Wright & Trump (1962), ref. 6 in NASA TN
-# Approximate polynomial fits: W(Z, T₀) = fraction of electrons backscattered
+# Electron backscatter fraction: Cohen & Koral (NASA TN D-2909, 1965)
+# Validated against Tabata (1971), Wright & Trump (1962), Powell (1968)
 # ---------------------------------------------------------------------------
 def backscatter_fraction(z: int | float, electron_energy_mev: float) -> float:
-    """Estimate electron backscatter fraction W for given Z and T₀.
+    """Number fraction of electrons backscattered from a thick target.
 
-    Based on Wright & Trump (1962) data cited in NASA TN D-4755.
-    Empirical fit: W ≈ (0.005 * Z^0.7) / (1 + 0.3 * T₀)
-    Valid for Z=12-82, T₀=0.5-3.0 MeV.
+    Uses the Cohen & Koral (1965) empirical formula validated against 615
+    experimental data points for Z >= 6, E = 0.05-22 MeV:
+
+        eta = 1.28 * exp(-11.9 * Z^{-0.65} * (1 + 0.103 * Z^{0.37} * E^{0.65}))
+
+    Validation:
+        Pb 1.0 MeV: eta = 0.455  (Powell states ~0.44)
+        Al 3.0 MeV: eta = 0.040  (Powell states ~0.04)
+
+    References:
+        Cohen JD & Koral KF, NASA TN D-2909 (1965)
+        Tabata T, Ito R, Okabe S, NIM 94, 509 (1971)
     """
+    import math
+
     if z <= 0:
         msg = f"Atomic number must be positive, got Z={z}"
         raise ValueError(msg)
@@ -182,7 +194,8 @@ def backscatter_fraction(z: int | float, electron_energy_mev: float) -> float:
         msg = f"Electron energy must be positive, got {electron_energy_mev} MeV"
         raise ValueError(msg)
     z_f = float(z)
-    return float(min(0.005 * z_f**0.7 / (1.0 + 0.3 * electron_energy_mev), 0.5))
+    exponent = -11.9 * z_f ** (-0.65) * (1.0 + 0.103 * z_f**0.37 * electron_energy_mev**0.65)
+    return float(min(1.28 * math.exp(exponent), 0.95))
 
 
 # ---------------------------------------------------------------------------
