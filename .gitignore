@@ -17,3 +17,9 @@ data/validation_results.json
 data/bremslib/BremsLib_v2.0/
 data/bremslib/build/
 data/bremslib/Interpolate_DCS/
+
+# Geant4 validation — commit source, not binaries/logs/data
+geant4_validation/thick_target_brems
+geant4_validation/build/
+geant4_validation/*.log
+geant4_validation/*.csv
