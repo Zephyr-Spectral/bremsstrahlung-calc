@@ -57,7 +57,7 @@ max-complexity = 10
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]
 "data/*.py" = ["S101", "T201", "RUF002", "RUF003"]  # data extraction scripts use assert/print and math Unicode
-"geant4_validation/*.py" = ["T201", "S110", "S603", "S607", "B905", "RUF059", "E501", "C901", "SIM102"]  # CLI/batch scripts
+"geant4_validation/*.py" = ["T201", "S110", "S603", "B905", "RUF059", "E501", "C901", "SIM102"]  # CLI/batch: print, except, subprocess (inputs from config not user), zip, unpack, C++ strings
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

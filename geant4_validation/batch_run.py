@@ -107,69 +107,51 @@ def csda_range_simple(t0_mev: float, z: int, a: float) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Build the Geant4 executable (generalized from fe_3mev_killsphere)
+# Build the Geant4 executable
 # ---------------------------------------------------------------------------
+BUILD_SCRIPT: Path = SCRIPT_DIR / "build_killsphere.sh"
+
+
 def ensure_executable() -> bool:
-    """Check that the generalized killsphere executable exists."""
+    """Check that the generalized killsphere executable exists, build if not."""
     gen_exe = SCRIPT_DIR / "killsphere_general"
     if gen_exe.exists():
         return True
-    # Check if we need to build a generalized version
-    # For now, we'll modify the command line to pass material + energy
-    # The fe_3mev_killsphere already takes [n_events] [prefix] but
-    # material and energy are hardcoded. We need a generalized version.
     print("Building generalized kill sphere executable...")
     return build_general_executable()
 
 
 def build_general_executable() -> bool:
-    """Build a version that takes material, energy, thickness as arguments."""
+    """Build the generalized executable via the build shell script.
+
+    The build script (build_killsphere.sh) handles conda activation,
+    geant4-config flag extraction, and compilation. No shell interpolation
+    in Python — all arguments are passed as a safe list.
+    """
     src = SCRIPT_DIR / "killsphere_general.cc"
     exe = SCRIPT_DIR / "killsphere_general"
 
-    # Write the generalized source
     _write_general_source(src)
 
-    # Compile
-    try:
-        # Get Geant4 compile flags
-        cflags = subprocess.check_output(
-            ["bash", "-c",
-             "source /opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh && "
-             "conda activate geant4_env 2>/dev/null && "
-             "geant4-config --cflags 2>/dev/null | tr ' ' '\\n' | grep -E '^-[DI]' | tr '\\n' ' '"],
-            text=True, timeout=10,
-        ).strip()
-        libs = subprocess.check_output(
-            ["bash", "-c",
-             "source /opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh && "
-             "conda activate geant4_env 2>/dev/null && "
-             "geant4-config --libs 2>/dev/null"],
-            text=True, timeout=10,
-        ).strip()
-        prefix = subprocess.check_output(
-            ["bash", "-c",
-             "source /opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh && "
-             "conda activate geant4_env 2>/dev/null && "
-             "geant4-config --prefix 2>/dev/null"],
-            text=True, timeout=10,
-        ).strip()
+    if not BUILD_SCRIPT.exists():
+        print(f"Build script not found: {BUILD_SCRIPT}")
+        return False
 
-        cmd = (
-            f"c++ -std=c++17 -O2 {cflags} "
-            f"-I{prefix}/include/Geant4 -I{prefix}/include "
-            f"{src} {libs} -Wl,-rpath,{prefix}/lib -o {exe}"
-        )
+    try:
         result = subprocess.run(
-            ["bash", "-c", cmd], capture_output=True, text=True, timeout=120
+            [str(BUILD_SCRIPT), str(src), str(exe)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(SCRIPT_DIR),
         )
         if result.returncode != 0:
-            print(f"Compilation failed: {result.stderr[:500]}")
+            print(f"Compilation failed:\n{result.stderr[:500]}")
             return False
-        print(f"Built {exe.name}")
+        print(result.stdout.strip())
         return True
-    except Exception as e:
-        print(f"Build failed: {e}")
+    except subprocess.TimeoutExpired:
+        print("Build timed out after 120s")
         return False
 
 
