@@ -31,6 +31,17 @@ const Plots = (function () {
                 type: 'scatter',
             });
         }
+        if (data.geant4) {
+            traces.push({
+                x: data.geant4.photon_energy_mev,
+                y: data.geant4.intensity,
+                name: `Geant4 MC (${(data.geant4.n_events/1000).toFixed(0)}K)`,
+                mode: 'lines+markers',
+                line: { color: '#50fa7b', width: 2 },
+                marker: { size: 5, symbol: 'diamond' },
+                type: 'scatter',
+            });
+        }
 
         const layout = {
             ...L,

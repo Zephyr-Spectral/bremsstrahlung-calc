@@ -23,3 +23,4 @@ geant4_validation/thick_target_brems
 geant4_validation/build/
 geant4_validation/*.log
 geant4_validation/*.csv
+data/mc_cache/

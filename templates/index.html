@@ -45,11 +45,11 @@
                 </div>
             </div>
             <div class="control-group">
-                <label>Mode</label>
-                <div class="radio-group">
-                    <label><input type="radio" name="mode" value="both" checked> Both</label>
-                    <label><input type="radio" name="mode" value="calculated"> Calculated</label>
-                    <label><input type="radio" name="mode" value="interpolated"> NASA Interp.</label>
+                <label>Traces</label>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" name="trace" value="calculated" checked> Calculated</label>
+                    <label><input type="checkbox" name="trace" value="interpolated" checked> NASA Interp.</label>
+                    <label><input type="checkbox" name="trace" value="geant4"> Geant4 MC</label>
                 </div>
             </div>
             <button id="calculate-btn" class="btn-primary">Calculate</button>

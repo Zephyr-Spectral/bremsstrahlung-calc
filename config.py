@@ -17,6 +17,28 @@ SB_DATA_PATH: Path = DATA_DIR / "sb_elements.json"  # Seltzer-Berger scaled DCS 
 STATIC_DIR: Path = PROJECT_ROOT / "static"
 TEMPLATES_DIR: Path = PROJECT_ROOT / "templates"
 
+# Monte Carlo
+GEANT4_EXE: Path = PROJECT_ROOT / "geant4_validation" / "thick_target_brems"
+GEANT4_ENV_SCRIPT: Path = PROJECT_ROOT / "geant4_validation" / "g4env.sh"
+EGSNRC_HOME: Path = Path.home() / "Projects" / "EGSnrc"
+MC_CACHE_DIR: Path = DATA_DIR / "mc_cache"
+MC_DEFAULT_EVENTS: int = 100_000
+MC_TIMEOUT_SECONDS: int = 300
+
+# Geant4 NIST material names
+G4_MATERIAL_NAMES: dict[str, str] = {
+    "Mg": "G4_Mg",
+    "Al": "G4_Al",
+    "Ti": "G4_Ti",
+    "Mn": "G4_Mn",
+    "Fe": "G4_Fe",
+    "Ni": "G4_Ni",
+    "Cu": "G4_Cu",
+    "W": "G4_W",
+    "Au": "G4_Au",
+    "Pb": "G4_Pb",
+}
+
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------

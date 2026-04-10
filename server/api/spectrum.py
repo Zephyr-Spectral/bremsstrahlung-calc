@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 import config
 from server.api import resolve_material
+from server.monte_carlo.geant4 import run_geant4
 from server.physics.interpolation import (
     get_nasa_spectrum_at_grid_point,
     interpolate_nasa_spectrum,
@@ -35,7 +36,10 @@ async def calculate_spectrum(
         default=0.0,
         description="Beam current in uA (0=per electron)",
     ),
-    mode: str = Query(default="both", description="calculated, interpolated, or both"),
+    mode: str = Query(
+        default="both",
+        description="calculated, interpolated, geant4, monte_carlo, all, or both",
+    ),
     n_points: int = Query(ge=10, le=500, default=50, description="Number of photon energy points"),
 ) -> dict[str, object]:
     """Compute bremsstrahlung energy spectrum at a fixed detection angle."""
@@ -54,7 +58,7 @@ async def calculate_spectrum(
         },
     }
 
-    if mode in ("calculated", "both"):
+    if mode in ("calculated", "both", "all"):
         k_calc, i_calc = thick_target_spectrum(
             electron_energy_mev,
             angle_deg,
@@ -74,7 +78,7 @@ async def calculate_spectrum(
                 intensity_to_photon_rate(i, beam_current_ua) for i in i_calc
             ]
 
-    if mode in ("interpolated", "both") and material in config.NASA_MATERIALS:
+    if mode in ("interpolated", "both", "all") and material in config.NASA_MATERIALS:
         k_interp, i_interp = interpolate_nasa_spectrum(
             electron_energy_mev,
             angle_deg,
@@ -88,6 +92,17 @@ async def calculate_spectrum(
             result["interpolated"]["photon_rate"] = [  # type: ignore[index]
                 intensity_to_photon_rate(i, beam_current_ua) for i in i_interp
             ]
+
+    if mode in ("geant4", "monte_carlo", "all"):
+        g4_result = run_geant4(material, electron_energy_mev, angle_deg)
+        if g4_result["status"] in ("ok", "cached"):
+            result["geant4"] = {
+                "photon_energy_mev": g4_result["photon_energy_mev"],
+                "intensity": g4_result["intensity"],
+                "n_events": g4_result["n_events"],
+                "n_photons": g4_result["n_photons"],
+                "status": g4_result["status"],
+            }
 
     return result
 

@@ -76,8 +76,25 @@ const Controls = (function () {
             electron_energy_mev: parseFloat(document.getElementById('energy-input').value),
             angle_deg: parseFloat(document.getElementById('angle-input').value),
             beam_current_ua: beamUA,
-            mode: document.querySelector('input[name="mode"]:checked').value,
+            mode: _getTraceMode(),
         };
+    }
+
+    function _getTraceMode() {
+        const checks = document.querySelectorAll('input[name="trace"]:checked');
+        const vals = Array.from(checks).map(cb => cb.value);
+        if (vals.length === 0) return 'calculated';
+        // If all three are checked, use "all"
+        if (vals.includes('calculated') && vals.includes('interpolated') && vals.includes('geant4')) return 'all';
+        if (vals.includes('calculated') && vals.includes('interpolated')) return 'both';
+        if (vals.includes('geant4') && vals.includes('calculated')) return 'all';
+        if (vals.length === 1) return vals[0];
+        return 'all';
+    }
+
+    function getSelectedTraces() {
+        const checks = document.querySelectorAll('input[name="trace"]:checked');
+        return Array.from(checks).map(cb => cb.value);
     }
 
     function getMaterials() { return _materials; }
@@ -91,5 +108,5 @@ const Controls = (function () {
         document.getElementById('status').textContent = msg;
     }
 
-    return { init, getParams, getMaterials, getCompareSelection, setStatus };
+    return { init, getParams, getMaterials, getCompareSelection, getSelectedTraces, setStatus };
 })();
