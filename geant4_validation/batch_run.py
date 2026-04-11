@@ -158,14 +158,19 @@ def build_general_executable() -> bool:
 def _write_general_source(path: Path) -> None:
     """Write generalized kill sphere C++ source that takes CLI args."""
     path.write_text(r'''
-/// Generalized kill sphere: takes material, energy, thickness, n_events, prefix as args.
-/// Usage: ./killsphere_general <G4_material> <T0_MeV> <thickness_mm> <target_R_mm> <n_events> <prefix>
+// Generalized kill sphere — multithreaded Geant4 simulation.
+// Uses G4VUserActionInitialization for MT-safe action creation.
+// Per-thread buffers for photon/electron data, merged at end of run.
+// Usage: ./killsphere_general <G4_mat> <T0_MeV> <thick_mm> <R_mm> <n_events> <prefix> [n_threads]
 
 #include "G4RunManagerFactory.hh"
 #include "G4UImanager.hh"
 #include "G4VUserDetectorConstruction.hh"
 #include "G4VUserPrimaryGeneratorAction.hh"
+#include "G4VUserActionInitialization.hh"
 #include "G4UserSteppingAction.hh"
+#include "G4UserRunAction.hh"
+#include "G4Run.hh"
 #include "G4VSensitiveDetector.hh"
 #include "G4SDManager.hh"
 #include "G4Box.hh"
@@ -184,14 +189,17 @@ def _write_general_source(path: Path) -> None:
 #include "G4Step.hh"
 #include "G4Track.hh"
 #include "G4TouchableHistory.hh"
+#include "G4Threading.hh"
+#include "G4AutoLock.hh"
 #include <iostream>
 #include <fstream>
 #include <cmath>
 #include <string>
+#include <vector>
 #include <mutex>
 #include <atomic>
 
-// CLI-configurable globals
+// CLI globals (set once in main, read-only during run)
 static std::string g_material = "G4_Fe";
 static double g_T0_MeV = 3.0;
 static double g_target_z_mm = 3.6;
@@ -199,6 +207,7 @@ static double g_target_r_mm = 9.6;
 static double g_beam_r_mm = 5.0;
 static double g_sphere_r_mm = 200.0;
 static int g_n_events = 10000000;
+static int g_n_threads = 0;  // 0 = auto-detect
 static std::string g_prefix = "output";
 
 #pragma pack(push, 1)
@@ -206,11 +215,34 @@ struct PhotonRec  { float k, theta, phi; };
 struct ElectronRec { float k, theta, phi, x, y, z; };
 #pragma pack(pop)
 
-static std::mutex g_ph_mtx, g_el_mtx, g_dose_mtx;
-static std::ofstream g_ph_file, g_el_file;
-static std::atomic<long> g_ph_count{0}, g_el_count{0}, g_bs_count{0};
-static double g_dose = 0, g_dose_sq = 0;
+// Thread-local buffers — each worker accumulates here, merged after run
+static thread_local std::vector<PhotonRec> tl_photons;
+static thread_local std::vector<ElectronRec> tl_electrons;
+static thread_local double tl_dose = 0;
+static thread_local double tl_dose_sq = 0;
+static thread_local long tl_bs_count = 0;
 
+// Global merge targets (written once after run, under lock)
+static std::mutex g_merge_mtx;
+static std::vector<PhotonRec> g_all_photons;
+static std::vector<ElectronRec> g_all_electrons;
+static double g_dose = 0, g_dose_sq = 0;
+static long g_bs_count = 0;
+
+// Merge thread-local data into globals
+static void merge_thread_data() {
+    std::lock_guard<std::mutex> lock(g_merge_mtx);
+    g_all_photons.insert(g_all_photons.end(), tl_photons.begin(), tl_photons.end());
+    g_all_electrons.insert(g_all_electrons.end(), tl_electrons.begin(), tl_electrons.end());
+    g_dose += tl_dose;
+    g_dose_sq += tl_dose_sq;
+    g_bs_count += tl_bs_count;
+    tl_photons.clear();
+    tl_electrons.clear();
+    tl_dose = 0; tl_dose_sq = 0; tl_bs_count = 0;
+}
+
+// --- Sensitive Detector: scores at kill sphere, writes to thread-local buffer ---
 class KillSphereSD : public G4VSensitiveDetector {
 public:
     KillSphereSD(const G4String& n) : G4VSensitiveDetector(n) {}
@@ -218,19 +250,17 @@ public:
         auto* t = s->GetTrack();
         double k = t->GetKineticEnergy()/MeV;
         G4ThreeVector d = t->GetMomentumDirection();
-        double th = std::acos(std::max(-1.0,std::min(1.0,d.z())))*180/M_PI;
-        double ph = std::atan2(d.y(),d.x())*180/M_PI; if(ph<0) ph+=360;
-        if (t->GetDefinition()==G4Gamma::Definition() && k>0.001) {
-            PhotonRec r{(float)k,(float)th,(float)ph};
-            { std::lock_guard<std::mutex> l(g_ph_mtx);
-              g_ph_file.write((char*)&r,sizeof(r)); }
-            g_ph_count++;
-        } else if (t->GetDefinition()==G4Electron::Definition() && k>0.001) {
-            auto p=s->GetPreStepPoint()->GetPosition();
-            ElectronRec r{(float)k,(float)th,(float)ph,(float)(p.x()/mm),(float)(p.y()/mm),(float)(p.z()/mm)};
-            { std::lock_guard<std::mutex> l(g_el_mtx);
-              g_el_file.write((char*)&r,sizeof(r)); }
-            g_el_count++;
+        double cth = std::max(-1.0, std::min(1.0, d.z()));
+        float th = (float)(std::acos(cth) * 180.0 / M_PI);
+        float ph = (float)(std::atan2(d.y(), d.x()) * 180.0 / M_PI);
+        if (ph < 0) ph += 360.0f;
+
+        if (t->GetDefinition() == G4Gamma::Definition() && k > 0.001) {
+            tl_photons.push_back({(float)k, th, ph});
+        } else if (t->GetDefinition() == G4Electron::Definition() && k > 0.001) {
+            auto p = s->GetPreStepPoint()->GetPosition();
+            tl_electrons.push_back({(float)k, th, ph,
+                (float)(p.x()/mm), (float)(p.y()/mm), (float)(p.z()/mm)});
         }
         t->SetTrackStatus(fStopAndKill);
         return true;
@@ -239,128 +269,187 @@ public:
     void EndOfEvent(G4HCofThisEvent*) override {}
 };
 
+// --- Stepping Action: dose + backscatter (thread-local) ---
 class StepAction : public G4UserSteppingAction {
 public:
     void UserSteppingAction(const G4Step* s) override {
-        auto* v=s->GetPreStepPoint()->GetPhysicalVolume();
-        if(!v||v->GetName()!="Target") return;
-        double e=s->GetTotalEnergyDeposit()/MeV;
-        if(e>0){ std::lock_guard<std::mutex> l(g_dose_mtx); g_dose+=e; g_dose_sq+=e*e; }
-        auto* t=s->GetTrack();
-        auto* pv=s->GetPostStepPoint()->GetPhysicalVolume();
-        if(t->GetDefinition()==G4Electron::Definition()&&pv&&pv->GetName()=="World")
-            if(s->GetPostStepPoint()->GetPosition().z()<0.01*mm) g_bs_count++;
+        auto* v = s->GetPreStepPoint()->GetPhysicalVolume();
+        if (!v || v->GetName() != "Target") return;
+        double e = s->GetTotalEnergyDeposit() / MeV;
+        if (e > 0) { tl_dose += e; tl_dose_sq += e * e; }
+        auto* t = s->GetTrack();
+        auto* pv = s->GetPostStepPoint()->GetPhysicalVolume();
+        if (t->GetDefinition() == G4Electron::Definition() && pv && pv->GetName() == "World")
+            if (s->GetPostStepPoint()->GetPosition().z() < 0.01 * mm)
+                tl_bs_count++;
     }
 };
 
+// --- Run Action: merges thread-local data at end of each worker run ---
+class RunAction : public G4UserRunAction {
+public:
+    void EndOfRunAction(const G4Run*) override {
+        merge_thread_data();
+    }
+};
+
+// --- Detector ---
 class Det : public G4VUserDetectorConstruction {
 public:
     G4VPhysicalVolume* Construct() override {
-        auto* n=G4NistManager::Instance();
-        auto* mat=n->FindOrBuildMaterial(g_material);
-        auto* vac=n->FindOrBuildMaterial("G4_Galactic");
-        double wh=(g_sphere_r_mm+50)*mm;
-        auto* ws=new G4Box("World",wh,wh,wh);
-        auto* wl=new G4LogicalVolume(ws,vac,"World");
-        auto* wp=new G4PVPlacement(nullptr,{},wl,"World",nullptr,false,0);
-        auto* ts=new G4Tubs("Target",0,g_target_r_mm*mm,g_target_z_mm/2*mm,0,360*deg);
-        auto* tl=new G4LogicalVolume(ts,mat,"Target");
-        new G4PVPlacement(nullptr,G4ThreeVector(0,0,g_target_z_mm/2*mm),tl,"Target",wl,false,0);
-        auto* ss=new G4Sphere("KS",g_sphere_r_mm*mm,(g_sphere_r_mm+1)*mm,0,360*deg,0,180*deg);
-        auto* sl=new G4LogicalVolume(ss,vac,"KillSphere");
-        new G4PVPlacement(nullptr,G4ThreeVector(0,0,g_target_z_mm/2*mm),sl,"KillSphere",wl,false,0);
+        auto* n = G4NistManager::Instance();
+        auto* mat = n->FindOrBuildMaterial(g_material);
+        auto* vac = n->FindOrBuildMaterial("G4_Galactic");
+        double wh = (g_sphere_r_mm + 50) * mm;
+        auto* ws = new G4Box("World", wh, wh, wh);
+        auto* wl = new G4LogicalVolume(ws, vac, "World");
+        auto* wp = new G4PVPlacement(nullptr, {}, wl, "World", nullptr, false, 0);
+        auto* ts = new G4Tubs("Target", 0, g_target_r_mm*mm, g_target_z_mm/2*mm, 0, 360*deg);
+        auto* tl = new G4LogicalVolume(ts, mat, "Target");
+        new G4PVPlacement(nullptr, G4ThreeVector(0,0,g_target_z_mm/2*mm), tl, "Target", wl, false, 0);
+        auto* ss = new G4Sphere("KS", g_sphere_r_mm*mm, (g_sphere_r_mm+1)*mm, 0, 360*deg, 0, 180*deg);
+        auto* sl = new G4LogicalVolume(ss, vac, "KillSphere");
+        new G4PVPlacement(nullptr, G4ThreeVector(0,0,g_target_z_mm/2*mm), sl, "KillSphere", wl, false, 0);
         return wp;
     }
     void ConstructSDandField() override {
-        auto* sd=new KillSphereSD("KS_SD");
+        auto* sd = new KillSphereSD("KS_SD");
         G4SDManager::GetSDMpointer()->AddNewDetector(sd);
-        SetSensitiveDetector("KillSphere",sd);
+        SetSensitiveDetector("KillSphere", sd);
     }
 };
 
+// --- Primary Generator (created per thread in MT mode) ---
 class Gun : public G4VUserPrimaryGeneratorAction {
-    G4ParticleGun* g;
+    G4ParticleGun* fGun;
 public:
-    Gun():g(new G4ParticleGun(1)){
-        g->SetParticleDefinition(G4Electron::Definition());
-        g->SetParticleMomentumDirection(G4ThreeVector(0,0,1));
-        g->SetParticleEnergy(g_T0_MeV*MeV);
+    Gun() : fGun(new G4ParticleGun(1)) {
+        fGun->SetParticleDefinition(G4Electron::Definition());
+        fGun->SetParticleMomentumDirection(G4ThreeVector(0, 0, 1));
+        fGun->SetParticleEnergy(g_T0_MeV * MeV);
     }
-    ~Gun() override{delete g;}
+    ~Gun() override { delete fGun; }
     void GeneratePrimaries(G4Event* e) override {
-        double r=g_beam_r_mm*mm*std::sqrt(G4UniformRand());
-        double p=2*M_PI*G4UniformRand();
-        g->SetParticlePosition(G4ThreeVector(r*std::cos(p),r*std::sin(p),-5*mm));
-        g->GeneratePrimaryVertex(e);
+        double r = g_beam_r_mm * mm * std::sqrt(G4UniformRand());
+        double p = 2.0 * M_PI * G4UniformRand();
+        fGun->SetParticlePosition(G4ThreeVector(r*std::cos(p), r*std::sin(p), -5.0*mm));
+        fGun->GeneratePrimaryVertex(e);
     }
 };
 
+// --- Action Initialization (required for MT) ---
+class ActionInit : public G4VUserActionInitialization {
+public:
+    void BuildForMaster() const override {
+        SetUserAction(new RunAction());
+    }
+    void Build() const override {
+        SetUserAction(new Gun());
+        SetUserAction(new StepAction());
+        SetUserAction(new RunAction());
+    }
+};
+
+// --- Physics ---
 class Phys : public G4VModularPhysicsList {
 public:
-    Phys(){ RegisterPhysics(new G4EmStandardPhysics_option4()); RegisterPhysics(new G4DecayPhysics()); }
+    Phys() {
+        RegisterPhysics(new G4EmStandardPhysics_option4());
+        RegisterPhysics(new G4DecayPhysics());
+    }
 };
 
 int main(int argc, char** argv) {
-    if(argc<7){
-        std::cerr<<"Usage: "<<argv[0]<<" <G4_mat> <T0_MeV> <thick_mm> <radius_mm> <n_events> <prefix>"<<std::endl;
+    if (argc < 7) {
+        std::cerr << "Usage: " << argv[0]
+                  << " <G4_mat> <T0> <thick_mm> <R_mm> <n_events> <prefix> [n_threads]"
+                  << std::endl;
         return 1;
     }
-    g_material=argv[1]; g_T0_MeV=std::stod(argv[2]); g_target_z_mm=std::stod(argv[3]);
-    g_target_r_mm=std::stod(argv[4]); g_n_events=std::stoi(argv[5]); g_prefix=argv[6];
+    g_material = argv[1];
+    g_T0_MeV = std::stod(argv[2]);
+    g_target_z_mm = std::stod(argv[3]);
+    g_target_r_mm = std::stod(argv[4]);
+    g_n_events = std::stoi(argv[5]);
+    g_prefix = argv[6];
+    if (argc > 7) g_n_threads = std::stoi(argv[7]);
 
-    g_ph_file.open(g_prefix+"_photons.bin",std::ios::binary);
-    g_el_file.open(g_prefix+"_electrons.bin",std::ios::binary);
-    int h1[3]={g_n_events,(int)sizeof(PhotonRec),2};
-    int h2[3]={g_n_events,(int)sizeof(ElectronRec),2};
-    g_ph_file.write((char*)h1,12); g_el_file.write((char*)h2,12);
+    // Create run manager — MT if threads > 0, else auto-detect
+    auto rmType = G4RunManagerType::Default;  // auto MT
+    auto* rm = G4RunManagerFactory::CreateRunManager(rmType);
+    if (g_n_threads > 0) {
+        rm->SetNumberOfThreads(g_n_threads);
+    }
 
-    auto* rm=G4RunManagerFactory::CreateRunManager(G4RunManagerType::Serial);
-    rm->SetUserInitialization(new Det()); rm->SetUserInitialization(new Phys());
-    rm->SetUserAction(new Gun()); rm->SetUserAction(new StepAction());
+    rm->SetUserInitialization(new Det());
+    rm->SetUserInitialization(new Phys());
+    rm->SetUserInitialization(new ActionInit());
     rm->Initialize();
+
     G4UImanager::GetUIpointer()->ApplyCommand("/run/verbose 0");
     G4UImanager::GetUIpointer()->ApplyCommand("/event/verbose 0");
     G4UImanager::GetUIpointer()->ApplyCommand("/tracking/verbose 0");
     G4UImanager::GetUIpointer()->ApplyCommand("/run/printProgress 1000000");
 
-    std::cerr<<g_material<<" "<<g_T0_MeV<<" MeV, "<<g_target_z_mm<<" mm, "
-             <<g_n_events<<" events -> "<<g_prefix<<std::endl;
+    int actual_threads = rm->GetNumberOfThreads();
+    std::cerr << g_material << " " << g_T0_MeV << " MeV, "
+              << g_target_z_mm << " mm, " << g_n_events << " events, "
+              << actual_threads << " threads -> " << g_prefix << std::endl;
+
     rm->BeamOn(g_n_events);
-    g_ph_file.close(); g_el_file.close();
 
-    long np=g_ph_count, ne=g_el_count, nb=g_bs_count;
-    double dm=g_dose/g_n_events;
+    // All thread-local data has been merged via RunAction::EndOfRunAction
+    long np = (long)g_all_photons.size();
+    long ne = (long)g_all_electrons.size();
+    long nb = g_bs_count;
+    double dm = g_dose / g_n_events;
 
-    // Write summary JSON with physics model + data library info
-    std::string g4ver = "11.3.2";  // from geant4-config --version
+    // Write binary output files (sequential, after all threads done)
+    {
+        std::ofstream pf(g_prefix + "_photons.bin", std::ios::binary);
+        int h[3] = {g_n_events, (int)sizeof(PhotonRec), 3};  // version 3 = MT
+        pf.write((char*)h, 12);
+        pf.write((char*)g_all_photons.data(), np * sizeof(PhotonRec));
+    }
+    {
+        std::ofstream ef(g_prefix + "_electrons.bin", std::ios::binary);
+        int h[3] = {g_n_events, (int)sizeof(ElectronRec), 3};
+        ef.write((char*)h, 12);
+        ef.write((char*)g_all_electrons.data(), ne * sizeof(ElectronRec));
+    }
+
+    // Summary JSON
+    std::string g4ver = "11.3.2";
     const char* emlow = std::getenv("G4LEDATA");
     const char* ensdf = std::getenv("G4ENSDFSTATEDATA");
-    std::ofstream sf(g_prefix+"_summary.json");
-    sf<<"{"
-      <<"\"material\":\""<<g_material<<"\","
-      <<"\"T0_MeV\":"<<g_T0_MeV<<","
-      <<"\"target_z_mm\":"<<g_target_z_mm<<","
-      <<"\"target_r_mm\":"<<g_target_r_mm<<","
-      <<"\"beam_r_mm\":"<<g_beam_r_mm<<","
-      <<"\"sphere_r_mm\":"<<g_sphere_r_mm<<","
-      <<"\"n_events\":"<<g_n_events<<","
-      <<"\"n_photons\":"<<np<<","
-      <<"\"n_electrons\":"<<ne<<","
-      <<"\"backscatter_pct\":"<<100.0*nb/g_n_events<<","
-      <<"\"dose_MeV_per_e\":"<<dm<<","
-      <<"\"geant4_version\":\""<<g4ver<<"\","
-      <<"\"physics_list\":\"G4EmStandardPhysics_option4\","
-      <<"\"brems_model\":\"eBremSB (Seltzer-Berger)\","
-      <<"\"brems_angular\":\"AngularGen2BS\","
-      <<"\"msc_model\":\"GoudsmitSaunderson + WentzelVIUni\","
-      <<"\"ionisation_model\":\"PenIoni + MollerBhabha\","
-      <<"\"G4LEDATA\":\""<<(emlow?emlow:"unknown")<<"\","
-      <<"\"G4ENSDFSTATEDATA\":\""<<(ensdf?ensdf:"unknown")<<"\""
-      <<"}"<<std::endl;
-    sf.close();
+    std::ofstream sf(g_prefix + "_summary.json");
+    sf << "{"
+       << "\"material\":\"" << g_material << "\","
+       << "\"T0_MeV\":" << g_T0_MeV << ","
+       << "\"target_z_mm\":" << g_target_z_mm << ","
+       << "\"target_r_mm\":" << g_target_r_mm << ","
+       << "\"beam_r_mm\":" << g_beam_r_mm << ","
+       << "\"sphere_r_mm\":" << g_sphere_r_mm << ","
+       << "\"n_events\":" << g_n_events << ","
+       << "\"n_threads\":" << actual_threads << ","
+       << "\"n_photons\":" << np << ","
+       << "\"n_electrons\":" << ne << ","
+       << "\"backscatter_pct\":" << 100.0*nb/g_n_events << ","
+       << "\"dose_MeV_per_e\":" << dm << ","
+       << "\"geant4_version\":\"" << g4ver << "\","
+       << "\"physics_list\":\"G4EmStandardPhysics_option4\","
+       << "\"brems_model\":\"eBremSB (Seltzer-Berger)\","
+       << "\"brems_angular\":\"AngularGen2BS\","
+       << "\"msc_model\":\"GoudsmitSaunderson + WentzelVIUni\","
+       << "\"ionisation_model\":\"PenIoni + MollerBhabha\","
+       << "\"G4LEDATA\":\"" << (emlow ? emlow : "unknown") << "\","
+       << "\"G4ENSDFSTATEDATA\":\"" << (ensdf ? ensdf : "unknown") << "\""
+       << "}" << std::endl;
 
-    std::cerr<<"  photons="<<np<<" electrons="<<ne<<" bs="<<100.0*nb/g_n_events
-             <<"% dose="<<dm<<" MeV/e"<<std::endl;
+    std::cerr << "  photons=" << np << " electrons=" << ne
+              << " bs=" << 100.0*nb/g_n_events
+              << "% dose=" << dm << " MeV/e"
+              << " threads=" << actual_threads << std::endl;
 
     delete rm;
     return 0;

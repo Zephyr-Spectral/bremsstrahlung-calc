@@ -2,8 +2,8 @@
 # Build the generalized kill sphere executable for Geant4 batch runs.
 # Usage: ./build_killsphere.sh <source.cc> <output_exe>
 #
-# Requires: conda geant4_env with Geant4 11.3+ installed.
-# Called by batch_run.py — not intended for direct use.
+# Uses geant4-config from the geant4_env conda environment directly
+# without conda activate (avoids Geant4 activation script bugs).
 
 set -euo pipefail
 
@@ -20,19 +20,33 @@ if [ ! -f "$SRC" ]; then
     exit 1
 fi
 
-# Activate Geant4 conda environment
-source /opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh
-conda activate geant4_env 2>/dev/null
+# --- Locate geant4-config directly in the conda env ---
+G4ENV_BIN=""
+for candidate in \
+    "/opt/homebrew/Caskroom/miniforge/base/envs/geant4_env/bin" \
+    "$HOME/miniforge3/envs/geant4_env/bin" \
+    "$HOME/miniconda3/envs/geant4_env/bin"; do
+    if [ -x "${candidate}/geant4-config" ]; then
+        G4ENV_BIN="$candidate"
+        break
+    fi
+done
 
-G4PREFIX=$(geant4-config --prefix)
+if [ -z "$G4ENV_BIN" ]; then
+    echo "ERROR: geant4-config not found in any geant4_env location." >&2
+    exit 1
+fi
 
-# Extract only -D and -I flags from geant4-config --cflags
-CFLAGS=$(geant4-config --cflags | tr ' ' '\n' | grep -E '^-[DI]' | tr '\n' ' ')
-LIBS=$(geant4-config --libs)
+G4CONFIG="${G4ENV_BIN}/geant4-config"
+G4PREFIX=$("$G4CONFIG" --prefix)
+G4VERSION=$("$G4CONFIG" --version)
 
-echo "Compiling $SRC -> $EXE"
-echo "  G4 prefix: $G4PREFIX"
-echo "  G4 version: $(geant4-config --version)"
+# Extract only -D and -I flags
+CFLAGS=$("$G4CONFIG" --cflags | tr ' ' '\n' | grep -E '^-[DI]' | tr '\n' ' ')
+LIBS=$("$G4CONFIG" --libs)
+
+echo "Compiling $(basename "$SRC") -> $(basename "$EXE")"
+echo "  Geant4 ${G4VERSION} at ${G4PREFIX}"
 
 c++ -std=c++17 -O2 \
     $CFLAGS \
@@ -43,4 +57,4 @@ c++ -std=c++17 -O2 \
     -Wl,-rpath,"${G4PREFIX}/lib" \
     -o "$EXE"
 
-echo "Built: $EXE"
+echo "Built: $(basename "$EXE")"
