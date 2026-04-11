@@ -40,6 +40,31 @@ def _get_xcom_data() -> dict[str, Any]:
     return _xcom_cache
 
 
+def absorption_edges(
+    material_symbol: str,
+) -> list[float]:
+    """Return absorption edge energies (MeV) for a material from XCOM data.
+
+    Edges are identified by duplicate energy entries in the XCOM table.
+    Returns a sorted list of edge energies (K, L, M edges as available).
+    """
+    if material_symbol not in config.XCOM_ELEMENT_NAMES:
+        return []
+
+    element_name = config.XCOM_ELEMENT_NAMES[material_symbol]
+    xcom = _get_xcom_data()
+    if element_name not in xcom:
+        return []
+
+    coeffs = xcom[element_name]["coefficients"]
+    energies: list[float] = [c["energy_MeV"] for c in coeffs]
+    edges: list[float] = []
+    for i in range(len(energies) - 1):
+        if energies[i] == energies[i + 1] and energies[i] not in edges:
+            edges.append(float(energies[i]))
+    return sorted(edges)
+
+
 def mass_attenuation_coefficient(
     photon_energy_mev: float,
     z: int | float,
@@ -166,9 +191,17 @@ def _interpolate_xcom(
 ) -> float:
     """Log-log interpolation of XCOM data, preserving absorption edges.
 
-    XCOM stores two entries at each edge: one just below (low mu) and one
-    just above (high mu).  We search for the correct interval manually so
-    that the step discontinuity is respected rather than averaged away.
+    XCOM stores two entries at each absorption edge energy: one for the
+    cross section just below the edge and one just above.  These represent
+    real physics — the photoelectric cross section jumps discontinuously
+    at each shell binding energy.
+
+    Strategy:
+      1. Build a list of segments between consecutive distinct energies.
+         Each segment lies between two points with no edge in between.
+      2. At an edge (duplicate energy), jump straight from the pre-edge
+         value to the post-edge value — no interpolation across the gap.
+      3. Within a segment, use standard log-log interpolation.
 
     Args:
         energies: Energy grid in MeV (may have duplicate entries at edges).
@@ -190,20 +223,33 @@ def _interpolate_xcom(
     if energy_query >= energies[-1]:
         return mu_rho[-1]
 
-    # Find the last index where energy[i] <= energy_query
-    # (handles duplicate edge entries: we pick the upper side)
-    idx = 0
-    for i in range(n - 1):
-        if energies[i] <= energy_query:
+    # Find the correct interpolation interval.
+    # Walk from the top of the table downward to find the highest index i
+    # where energies[i] <= energy_query AND energies[i+1] >= energy_query.
+    # When two entries share the same energy (an edge), they define a
+    # discontinuity — never interpolate across them.
+    idx = -1
+    for i in range(n - 2, -1, -1):
+        if energies[i] <= energy_query <= energies[i + 1]:
+            # Check: is this an edge pair (duplicate energy)?
+            if energies[i] == energies[i + 1]:
+                # Query is exactly at an edge.  Return the post-edge
+                # (higher-mu) value — the photon sees the full shell.
+                return mu_rho[i + 1]
             idx = i
+            break
 
-    # Log-log interpolation between idx and idx+1
+    if idx < 0:
+        # Should not reach here after clamping, but be safe
+        return mu_rho[0]
+
     e0, e1 = energies[idx], energies[idx + 1]
     m0, m1 = mu_rho[idx], mu_rho[idx + 1]
 
-    if e0 <= 0 or e1 <= 0 or m0 <= 0 or m1 <= 0 or e0 == e1:
+    if e0 <= 0 or e1 <= 0 or m0 <= 0 or m1 <= 0:
         return m0
 
+    # Log-log interpolation within this edge-free segment
     log_e = math.log(energy_query / e0) / math.log(e1 / e0)
     return float(m0 * (m1 / m0) ** log_e)
 

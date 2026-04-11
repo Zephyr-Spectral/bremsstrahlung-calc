@@ -14,16 +14,25 @@ NASA_DATA_PATH: Path = DATA_DIR / "nasa_tnd4755" / "tables.json"
 XCOM_DATA_PATH: Path = DATA_DIR / "xcom_elements.json"
 ESTAR_DATA_PATH: Path = DATA_DIR / "estar_elements.json"
 SB_DATA_PATH: Path = DATA_DIR / "sb_elements.json"  # Seltzer-Berger scaled DCS tables
+EXPERIMENTAL_DATA_DIR: Path = DATA_DIR / "experimental"
+DANCE_1968_PATH: Path = EXPERIMENTAL_DATA_DIR / "dance_1968" / "dance_1968.json"
 STATIC_DIR: Path = PROJECT_ROOT / "static"
 TEMPLATES_DIR: Path = PROJECT_ROOT / "templates"
 
 # Monte Carlo
 GEANT4_EXE: Path = PROJECT_ROOT / "geant4_validation" / "thick_target_brems"
 GEANT4_ENV_SCRIPT: Path = PROJECT_ROOT / "geant4_validation" / "g4env.sh"
+GEANT4_LOOKUP_PATH: Path = PROJECT_ROOT / "geant4_validation" / "geant4_lookup.npz"
 EGSNRC_HOME: Path = Path.home() / "Projects" / "EGSnrc"
 MC_CACHE_DIR: Path = DATA_DIR / "mc_cache"
 MC_DEFAULT_EVENTS: int = 100_000
 MC_TIMEOUT_SECONDS: int = 300
+
+# Geant4 batch lookup parameters (must match batch_run.py binning)
+G4_BATCH_K_BINS: int = 40
+G4_BATCH_K_MIN_FRAC: float = 0.005
+G4_BATCH_K_MIN_ABS: float = 0.010
+G4_BATCH_K_MAX_FRAC: float = 0.95
 
 # Geant4 NIST material names
 G4_MATERIAL_NAMES: dict[str, str] = {

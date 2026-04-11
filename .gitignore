@@ -33,3 +33,5 @@ geant4_validation/geant4_lookup.npz
 geant4_validation/killsphere_general
 geant4_validation/killsphere_general.cc
 data/mc_cache/
+.docs/
+references/

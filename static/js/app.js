@@ -93,16 +93,19 @@ const App = (function () {
                 material: p.material,
                 electron_energy_mev: p.electron_energy_mev,
                 n_points: 20,
+                mode: p.mode,
             });
             const intData = await Utils.fetchJSON('/api/spectrum/integrated?' + qInt);
             _cache.integrated = intData;
             Plots.integrated(intData);
 
+            const heatMode = Controls.getSelectedTraces().includes('geant4') ? 'geant4' : 'calculated';
             const qHeat = new URLSearchParams({
                 material: p.material,
                 electron_energy_mev: p.electron_energy_mev,
                 n_points: 20,
-                n_angles: 9,
+                n_angles: 19,
+                mode: heatMode,
             });
             const heatData = await Utils.fetchJSON('/api/spectrum/heatmap?' + qHeat);
             _cache.heatmap = heatData;
@@ -130,6 +133,7 @@ const App = (function () {
                 electron_energy_mev: p.electron_energy_mev,
                 photon_energy_mev: photonE,
                 n_angles: 19,
+                mode: p.mode,
             });
             const data = await Utils.fetchJSON('/api/spectrum/angular?' + q);
             _cache.angular = data;
@@ -155,6 +159,7 @@ const App = (function () {
                 electron_energy_mev: p.electron_energy_mev,
                 angle_deg: p.angle_deg,
                 n_points: 20,
+                mode: p.mode,
             });
             const data = await Utils.fetchJSON('/api/spectrum/compare?' + q);
             _cache.compare = data;
@@ -169,6 +174,7 @@ const App = (function () {
         const p = Controls.getParams();
         const energy = document.getElementById('val-energy').value;
         const angle = document.getElementById('val-angle').value;
+        const includeG4 = document.getElementById('val-include-g4').checked;
         Controls.setStatus('Validating...');
 
         try {
@@ -177,7 +183,10 @@ const App = (function () {
                 electron_energy_mev: energy,
                 angle_deg: angle,
             });
-            const data = await Utils.fetchJSON('/api/validation/nasa-comparison?' + q);
+            const endpoint = includeG4
+                ? '/api/validation/geant4-comparison?'
+                : '/api/validation/nasa-comparison?';
+            const data = await Utils.fetchJSON(endpoint + q);
             _cache.validation = data;
             Plots.validation(data);
             Controls.setStatus('Done');

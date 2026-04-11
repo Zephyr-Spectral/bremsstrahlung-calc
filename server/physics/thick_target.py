@@ -26,7 +26,7 @@ import math
 import numpy as np
 
 import config
-from server.physics.attenuation import photon_transmission
+from server.physics.attenuation import absorption_edges, photon_transmission
 from server.physics.bremslib import bremslib_ddcs_vec
 from server.physics.electron_range import csda_range
 from server.physics.scattering import (
@@ -193,6 +193,17 @@ def thick_target_spectrum(
     # Use log-spacing: bremsstrahlung spans decades and needs even sampling on log scale
     photon_energies = list(np.logspace(np.log10(k_min), np.log10(k_max), n_points))
 
+    # Inject points just below and just above each absorption edge so the
+    # sharp discontinuity in photon attenuation is resolved in the output.
+    if material_symbol is not None:
+        edges = absorption_edges(material_symbol)
+        edge_delta = 1e-5  # 10 eV offset to straddle the edge
+        for e_edge in edges:
+            if k_min < e_edge < k_max:
+                photon_energies.append(e_edge - edge_delta)
+                photon_energies.append(e_edge + edge_delta)
+        photon_energies = sorted(set(photon_energies))
+
     intensities = [
         thick_target_intensity(
             electron_energy_mev,
@@ -219,10 +230,11 @@ def angle_integrated_spectrum(
     n_photon_points: int = config.DEFAULT_PHOTON_ENERGY_POINTS,
     n_angle_points: int = 19,
     n_slabs: int = config.DEFAULT_N_SLABS,
+    max_angle_deg: float = 180.0,
 ) -> tuple[list[float], list[float]]:
     """Compute angle-integrated thick-target spectrum.
 
-    Integrates I(k, phi_d) * 2π sin(phi_d) over phi_d from 0 to π/2.
+    Integrates I(k, phi_d) * 2*pi*sin(phi_d) over phi_d from 0 to max_angle.
 
     Args:
         electron_energy_mev: Incident electron kinetic energy (MeV).
@@ -233,17 +245,28 @@ def angle_integrated_spectrum(
         n_photon_points: Number of photon energy points.
         n_angle_points: Number of angle integration points.
         n_slabs: Number of electron-energy integration steps.
+        max_angle_deg: Maximum integration angle (degrees), default 180.
 
     Returns:
         Tuple of (photon_energies_mev, integrated_intensities).
         Integrated intensities in MeV/(MeV electron).
     """
-    angles_deg = list(np.linspace(0.0, 90.0, n_angle_points))
-    d_angle_rad = math.radians(90.0 / (n_angle_points - 1))
+    angles_deg = list(np.linspace(0.0, max_angle_deg, n_angle_points))
+    d_angle_rad = math.radians(max_angle_deg / (n_angle_points - 1))
 
     k_min = config.THICK_SPECTRUM_K_FRACTION_MIN * electron_energy_mev
     k_max = config.THICK_SPECTRUM_K_FRACTION_MAX * electron_energy_mev
     photon_energies = list(np.linspace(k_min, k_max, n_photon_points))
+
+    # Inject edge-adjacent points for proper K/L/M edge resolution
+    if material_symbol is not None:
+        edges = absorption_edges(material_symbol)
+        edge_delta = 1e-5
+        for e_edge in edges:
+            if k_min < e_edge < k_max:
+                photon_energies.append(e_edge - edge_delta)
+                photon_energies.append(e_edge + edge_delta)
+        photon_energies = sorted(set(photon_energies))
 
     integrated = []
     for k in photon_energies:

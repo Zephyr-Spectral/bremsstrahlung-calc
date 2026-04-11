@@ -32,13 +32,34 @@ const Plots = (function () {
             });
         }
         if (data.geant4) {
-            traces.push({
+            const g4trace = {
                 x: data.geant4.photon_energy_mev,
                 y: data.geant4.intensity,
-                name: `Geant4 MC (${(data.geant4.n_events/1000).toFixed(0)}K)`,
+                name: `Geant4 MC (${(data.geant4.n_events/1e6).toFixed(0)}M e\u207b)`,
                 mode: 'lines+markers',
                 line: { color: '#50fa7b', width: 2 },
                 marker: { size: 5, symbol: 'diamond' },
+                type: 'scatter',
+            };
+            if (data.geant4.uncertainty) {
+                g4trace.error_y = {
+                    type: 'data',
+                    array: data.geant4.uncertainty,
+                    visible: true,
+                    color: '#50fa7b',
+                    thickness: 1,
+                    width: 2,
+                };
+            }
+            traces.push(g4trace);
+        }
+        if (data.experimental) {
+            traces.push({
+                x: data.experimental.photon_energy_mev,
+                y: data.experimental.intensity,
+                name: 'Dance et al. (1968)',
+                mode: 'markers',
+                marker: { color: '#ffa500', size: 9, symbol: 'star-triangle-up' },
                 type: 'scatter',
             });
         }
@@ -55,41 +76,99 @@ const Plots = (function () {
 
     function angular(data) {
         const L = Utils.getLayout();
-        const trace = {
-            theta: data.angles_deg,
-            r: data.intensity,
-            name: data.parameters.material,
-            type: 'scatterpolar',
-            mode: 'lines+markers',
-            line: { color: C[0], width: 2 },
-            marker: { size: 4 },
-        };
+        const traces = [];
+        const p = data.parameters;
 
-        const gridColor = Utils.getPolarBg() === '#16213e' ? '#333' : '#ccd0d9';
+        if (data.calculated) {
+            traces.push({
+                x: data.calculated.angles_deg,
+                y: data.calculated.intensity,
+                name: 'Calculated',
+                line: { color: C[0], width: 2 },
+                type: 'scatter',
+            });
+        }
+        // Legacy format (flat arrays)
+        if (!data.calculated && data.angles_deg) {
+            traces.push({
+                x: data.angles_deg,
+                y: data.intensity,
+                name: 'Calculated',
+                line: { color: C[0], width: 2 },
+                type: 'scatter',
+            });
+        }
+        if (data.geant4) {
+            const g4trace = {
+                x: data.geant4.angles_deg,
+                y: data.geant4.intensity,
+                name: `Geant4 MC (${(data.geant4.n_events/1e6).toFixed(0)}M e\u207b, k\u2248${data.geant4.k_bin_center_mev.toFixed(2)} MeV)`,
+                mode: 'lines+markers',
+                line: { color: '#50fa7b', width: 2 },
+                marker: { size: 5, symbol: 'diamond' },
+                type: 'scatter',
+            };
+            if (data.geant4.uncertainty) {
+                g4trace.error_y = {
+                    type: 'data',
+                    array: data.geant4.uncertainty,
+                    visible: true,
+                    color: '#50fa7b',
+                    thickness: 1,
+                    width: 2,
+                };
+            }
+            traces.push(g4trace);
+        }
+
         const layout = {
             ...L,
-            title: `Angular Distribution: ${data.parameters.material}, E\u2090=${data.parameters.electron_energy_mev} MeV, k=${data.parameters.photon_energy_mev} MeV`,
-            polar: {
-                bgcolor: Utils.getPolarBg(),
-                angularaxis: { gridcolor: gridColor, linecolor: gridColor, tickfont: { color: L.font.color } },
-                radialaxis: { gridcolor: gridColor, linecolor: gridColor, tickfont: { color: L.font.color }, type: 'log' },
-            },
+            title: `Angular Distribution: ${p.material}, E\u2090=${p.electron_energy_mev} MeV, k=${p.photon_energy_mev} MeV`,
+            xaxis: { ...L.xaxis, title: 'Detection Angle (deg)' },
+            yaxis: { ...L.yaxis, title: 'Intensity (MeV / MeV\u00b7sr\u00b7e\u207b)', type: 'log' },
         };
 
-        Plotly.react('plot-angular', [trace], layout, { responsive: true });
+        Plotly.react('plot-angular', traces, layout, { responsive: true });
     }
 
     function integrated(data) {
         const L = Utils.getLayout();
-        const trace = {
-            x: data.photon_energy_mev,
-            y: data.intensity,
-            name: 'Angle-integrated',
-            line: { color: C[0], width: 2 },
-            fill: 'tozeroy',
-            fillcolor: 'rgba(233,69,96,0.15)',
-            type: 'scatter',
-        };
+        const traces = [];
+
+        if (data.calculated) {
+            traces.push({
+                x: data.calculated.photon_energy_mev,
+                y: data.calculated.intensity,
+                name: 'Calculated',
+                line: { color: C[0], width: 2 },
+                fill: 'tozeroy',
+                fillcolor: 'rgba(233,69,96,0.15)',
+                type: 'scatter',
+            });
+        }
+        // Legacy format (single arrays at top level)
+        if (!data.calculated && data.photon_energy_mev) {
+            traces.push({
+                x: data.photon_energy_mev,
+                y: data.intensity,
+                name: 'Calculated',
+                line: { color: C[0], width: 2 },
+                fill: 'tozeroy',
+                fillcolor: 'rgba(233,69,96,0.15)',
+                type: 'scatter',
+            });
+        }
+        if (data.geant4) {
+            traces.push({
+                x: data.geant4.photon_energy_mev,
+                y: data.geant4.intensity,
+                name: `Geant4 MC (${(data.geant4.n_events/1e6).toFixed(0)}M e\u207b)`,
+                mode: 'lines+markers',
+                line: { color: '#50fa7b', width: 2 },
+                marker: { size: 5, symbol: 'diamond' },
+                type: 'scatter',
+            });
+        }
 
         const layout = {
             ...L,
@@ -98,23 +177,46 @@ const Plots = (function () {
             yaxis: { ...L.yaxis, title: 'Intensity (MeV / MeV\u00b7e\u207b)', type: 'log' },
         };
 
-        Plotly.react('plot-integrated', [trace], layout, { responsive: true });
+        Plotly.react('plot-integrated', traces, layout, { responsive: true });
     }
 
     function compare(data) {
         const L = Utils.getLayout();
         const traces = [];
-        const symbols = Object.keys(data.spectra);
-        symbols.forEach((sym, i) => {
-            const s = data.spectra[sym];
-            traces.push({
-                x: s.photon_energy_mev,
-                y: s.intensity,
-                name: sym,
-                line: { color: C[i % C.length], width: 2 },
-                type: 'scatter',
+
+        // Calculated spectra (solid lines)
+        if (data.spectra) {
+            const symbols = Object.keys(data.spectra);
+            symbols.forEach((sym, i) => {
+                const s = data.spectra[sym];
+                traces.push({
+                    x: s.photon_energy_mev,
+                    y: s.intensity,
+                    name: sym + ' (calc)',
+                    line: { color: C[i % C.length], width: 2 },
+                    type: 'scatter',
+                    legendgroup: sym,
+                });
             });
-        });
+        }
+
+        // Geant4 spectra (dashed lines with markers)
+        if (data.geant4_spectra) {
+            const symbols = Object.keys(data.geant4_spectra);
+            symbols.forEach((sym, i) => {
+                const s = data.geant4_spectra[sym];
+                traces.push({
+                    x: s.photon_energy_mev,
+                    y: s.intensity,
+                    name: sym + ' (G4)',
+                    mode: 'lines+markers',
+                    line: { color: C[i % C.length], width: 2, dash: 'dash' },
+                    marker: { size: 4, symbol: 'diamond' },
+                    type: 'scatter',
+                    legendgroup: sym,
+                });
+            });
+        }
 
         const layout = {
             ...L,
@@ -143,7 +245,7 @@ const Plots = (function () {
 
         const layout = {
             ...L,
-            title: `Intensity Heatmap: ${data.parameters.material}, E=${data.parameters.electron_energy_mev} MeV`,
+            title: `Intensity Heatmap: ${data.parameters.material}, E=${data.parameters.electron_energy_mev} MeV${data.parameters.source === 'geant4' ? ' (Geant4)' : ''}`,
             xaxis: { ...L.xaxis, title: 'Photon Energy (MeV)', type: 'log' },
             yaxis: { ...L.yaxis, title: 'Angle (deg)' },
         };
@@ -159,7 +261,7 @@ const Plots = (function () {
             traces.push({
                 x: data.nasa.photon_energy_mev,
                 y: data.nasa.intensity,
-                name: 'NASA Data',
+                name: 'NASA TN D-4755',
                 mode: 'markers',
                 marker: { color: C[1], size: 8, symbol: 'circle' },
                 type: 'scatter',
@@ -174,13 +276,53 @@ const Plots = (function () {
                 type: 'scatter',
             });
         }
+        if (data.geant4) {
+            const g4trace = {
+                x: data.geant4.photon_energy_mev,
+                y: data.geant4.intensity,
+                name: `Geant4 MC (${(data.geant4.n_events/1e6).toFixed(0)}M e\u207b)`,
+                mode: 'lines+markers',
+                line: { color: '#50fa7b', width: 2 },
+                marker: { size: 5, symbol: 'diamond' },
+                type: 'scatter',
+            };
+            if (data.geant4.uncertainty) {
+                g4trace.error_y = {
+                    type: 'data',
+                    array: data.geant4.uncertainty,
+                    visible: true,
+                    color: '#50fa7b',
+                    thickness: 1,
+                    width: 2,
+                };
+            }
+            traces.push(g4trace);
+        }
+        if (data.experimental) {
+            const unc = (data.experimental.uncertainty_pct || 18) / 100;
+            traces.push({
+                x: data.experimental.photon_energy_mev,
+                y: data.experimental.intensity,
+                name: 'Dance et al. (1968)',
+                mode: 'markers',
+                marker: { color: '#ffa500', size: 9, symbol: 'star-triangle-up' },
+                error_y: {
+                    type: 'percent',
+                    value: unc * 100,
+                    visible: true,
+                    color: '#ffa500',
+                    thickness: 1,
+                },
+                type: 'scatter',
+            });
+        }
 
         const p = data.parameters;
         const layout = {
             ...L,
             title: `Validation: ${p.material}, E=${p.electron_energy_mev} MeV, ${p.angle_deg}\u00b0`,
-            xaxis: { ...L.xaxis, title: 'Photon Energy (MeV)' },
-            yaxis: { ...L.yaxis, title: 'Intensity', type: 'log' },
+            xaxis: { ...L.xaxis, title: 'Photon Energy (MeV)', type: 'log' },
+            yaxis: { ...L.yaxis, title: 'Intensity (MeV / MeV\u00b7sr\u00b7e\u207b)', type: 'log' },
         };
 
         Plotly.react('plot-validation', traces, layout, { responsive: true });

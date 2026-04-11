@@ -1,0 +1,76 @@
+{
+  "metadata": {
+    "source": "Dance et al., J. Appl. Phys. 39, 2881 (1968)",
+    "digitized_from": "Pandola et al., arXiv:1410.2002, Figs. 1-3",
+    "digitization_tool": "WebPlotDigitizer",
+    "digitization_date": null,
+    "units": {
+      "photon_energy": "MeV",
+      "intensity": "MeV / (MeV sr electron)",
+      "note": "intensity = k * dn/dk/dOmega"
+    },
+    "uncertainty_pct": 18
+  },
+  "spectra": {
+    "Al": {
+      "2.00": {
+        "target_thickness_g_cm2": 1.20,
+        "angles": {
+          "0":   { "photon_energy_mev": [], "intensity": [] },
+          "10":  { "photon_energy_mev": [], "intensity": [] },
+          "20":  { "photon_energy_mev": [], "intensity": [] },
+          "30":  { "photon_energy_mev": [], "intensity": [] },
+          "45":  { "photon_energy_mev": [], "intensity": [] },
+          "60":  { "photon_energy_mev": [], "intensity": [] },
+          "75":  { "photon_energy_mev": [], "intensity": [] },
+          "120": { "photon_energy_mev": [], "intensity": [] },
+          "150": { "photon_energy_mev": [], "intensity": [] }
+        }
+      }
+    },
+    "Fe": {
+      "0.50": {
+        "target_thickness_g_cm2": 0.257,
+        "angles": {
+          "0":   { "photon_energy_mev": [], "intensity": [] },
+          "10":  { "photon_energy_mev": [], "intensity": [] },
+          "20":  { "photon_energy_mev": [], "intensity": [] },
+          "30":  { "photon_energy_mev": [], "intensity": [] },
+          "45":  { "photon_energy_mev": [], "intensity": [] },
+          "60":  { "photon_energy_mev": [], "intensity": [] },
+          "75":  { "photon_energy_mev": [], "intensity": [] },
+          "120": { "photon_energy_mev": [], "intensity": [] },
+          "150": { "photon_energy_mev": [], "intensity": [] }
+        }
+      },
+      "1.00": {
+        "target_thickness_g_cm2": 0.613,
+        "angles": {
+          "0":   { "photon_energy_mev": [], "intensity": [] },
+          "10":  { "photon_energy_mev": [], "intensity": [] },
+          "20":  { "photon_energy_mev": [], "intensity": [] },
+          "30":  { "photon_energy_mev": [], "intensity": [] },
+          "45":  { "photon_energy_mev": [], "intensity": [] },
+          "60":  { "photon_energy_mev": [], "intensity": [] },
+          "75":  { "photon_energy_mev": [], "intensity": [] },
+          "120": { "photon_energy_mev": [], "intensity": [] },
+          "150": { "photon_energy_mev": [], "intensity": [] }
+        }
+      },
+      "2.80": {
+        "target_thickness_g_cm2": 2.31,
+        "angles": {
+          "0":   { "photon_energy_mev": [], "intensity": [] },
+          "10":  { "photon_energy_mev": [], "intensity": [] },
+          "20":  { "photon_energy_mev": [], "intensity": [] },
+          "30":  { "photon_energy_mev": [], "intensity": [] },
+          "45":  { "photon_energy_mev": [], "intensity": [] },
+          "60":  { "photon_energy_mev": [], "intensity": [] },
+          "75":  { "photon_energy_mev": [], "intensity": [] },
+          "120": { "photon_energy_mev": [], "intensity": [] },
+          "150": { "photon_energy_mev": [], "intensity": [] }
+        }
+      }
+    }
+  }
+}

@@ -14,6 +14,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
 import config
+from server.api.geant4 import router as geant4_router
 from server.api.materials import router as materials_router
 from server.api.spectrum import router as spectrum_router
 from server.api.validation import router as validation_router
@@ -33,6 +34,7 @@ templates = Jinja2Templates(directory=str(config.TEMPLATES_DIR))
 app.include_router(spectrum_router)
 app.include_router(materials_router)
 app.include_router(validation_router)
+app.include_router(geant4_router)
 
 
 # ---------------------------------------------------------------------------
