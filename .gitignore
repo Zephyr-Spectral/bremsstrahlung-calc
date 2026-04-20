@@ -35,3 +35,7 @@ geant4_validation/killsphere_general.cc
 data/mc_cache/
 .docs/
 references/
+
+# Experimental data — commit source figures, not generated panels/detections
+data/experimental/*/panels/
+data/experimental/*/wpd_exports/
